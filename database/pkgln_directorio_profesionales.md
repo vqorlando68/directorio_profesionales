@@ -174,30 +174,139 @@ Orquestador de negocio para la reserva (marcado con `'1'`) o liberación (desmar
 | 6 | `uti_ge_excepciones_pkg.p_grabar_log` | `uti_` | Procedimiento | Registro forense del error en `tkr_errores` | En bloque WHEN OTHERS |
 | 7 | `uti_manejo_trazas_pkg.p_finalizar_traza_error` | `uti_` | Procedimiento | Cerrar traza con estado ERROR y SQLCODE | En bloque WHEN OTHERS |
 
+### 4. Documentación de Parámetros de Entrada (`p_json_entrada` CLOB)
+
+| Campo | Tipo | Obligatorio | Valor por Defecto | Descripción y Reglas de Negocio |
+| :--- | :---: | :---: | :---: | :--- |
+| `id_usuario` | NUMBER | **SÍ** | N/A | Identificador del profesional médico (`tkr_usuarios.id`). |
+| `fecha_hora` | VARCHAR2 | **SÍ** | N/A | Fecha y hora de inicio del intervalo a marcar en formato `YYYY-MM-DD HH24:MI` o ISO `YYYY-MM-DD"T"HH24:MI:SS` (ej. `'2026-10-27 08:20'`). |
+| `duracion_minutos` | NUMBER | NO | `20` | Duración del procedimiento o cita en minutos. Define la amplitud del rango de slots a marcar (ej. `20`, `40`, `60` min). |
+| `tipo_operacion` | VARCHAR2 | **SÍ** | N/A | **`'M'`** para **Marcar como Ocupado** (escribe `'1'` en los bits correspondientes).<br>**`'D'`** para **Desmarcar / Liberar** (escribe `'0'` en los bits para liberar el cupo por cancelación). |
+| `id_tipo_aseguramiento` | NUMBER | NO | `1` | `1` = Voluntario (Prepagada/Póliza), `2` = Obligatorio (EPS). |
+| `clase_atencion` / `modalidad` | VARCHAR2 | NO | `'V'` | `'V'` = Virtual / Telemedicina, `'D'` = Atención Domiciliaria. |
+| `id_convenio` | NUMBER | NO | `NULL` | ID del convenio si la cita aplica a un convenio específico. `NULL` actualiza las franjas generales del profesional. |
+
+---
+
+### 5. Cálculo Matemático del Rango de Bits en el Vector (288 posiciones)
+
+El vector binario `bitmap_ocupado` representa las 24 horas del día divididas en **288 intervalos de 5 minutos** (1440 min / 5 = 288 bits):
+1. **Minutos desde medianoche:**  
+   $$\text{min\_inicio} = (\text{hora} \times 60) + \text{minuto}$$  
+   $$\text{min\_fin} = \text{min\_inicio} + \text{duracion\_minutos}$$
+2. **Índice inicial y final en el vector (1-based):**  
+   $$\text{idx\_inicio} = \text{TRUNC}(\text{min\_inicio} / 5) + 1$$  
+   $$\text{idx\_fin} = \text{TRUNC}(\text{min\_fin} / 5)$$
+
+> [!TIP]
+> **Ejemplo de Rango de Slots (Cita de 40 minutos de 08:20 a 09:00):**
+> - Hora de inicio: `08:20` $\rightarrow 8 \times 60 + 20 = 500$ minutos.
+> - Duración: `40` minutos $\rightarrow$ Minuto fin: $500 + 40 = 540$ minutos.
+> - $\text{idx\_inicio} = \text{TRUNC}(500 / 5) + 1 = 101$.
+> - $\text{idx\_fin} = \text{TRUNC}(540 / 5) = 108$.
+> - **Acción:** Los bits desde la posición **101 hasta la 108** (8 bits consecutivos de 5 min) se actualizan a `'1'`, marcando 40 minutos continuos como ocupados.
+
+---
+
+### 6. Esquemas y Payloads JSON de Ejemplo
+
+#### Ejemplo A: Marcar Rango como Ocupado al Crear o Agendar Cita (`tipo_operacion = 'M'`)
+
+**JSON Entrada (`p_json_entrada`):**
 ```json
 {
   "id_usuario": 65,
-  "fecha_hora": "2026-10-26 08:00",
-  "duracion_minutos": 20,
+  "fecha_hora": "2026-10-27 08:20",
+  "duracion_minutos": 40,
   "tipo_operacion": "M",
-  "id_convenio": null,
   "id_tipo_aseguramiento": 1,
-  "modalidad": "V"
+  "modalidad": "V",
+  "id_convenio": null
 }
 ```
 
+**JSON Salida Exitoso (`p_json_salida`):**
 ```json
 {
   "codigo": 0,
   "mensaje": "Slots de cita reservados/marcados exitosamente",
   "id_usuario": 65,
-  "fecha": "2026-10-26",
-  "hora_inicio": "08:00",
-  "duracion_minutos": 20,
-  "idx_inicio": 97,
-  "idx_fin": 100,
+  "fecha": "2026-10-27",
+  "hora_inicio": "08:20",
+  "duracion_minutos": 40,
+  "idx_inicio": 101,
+  "idx_fin": 108,
   "tipo_operacion": "M",
   "filas_afectadas": 1
 }
 ```
+
+#### Ejemplo B: Liberar / Desmarcar Rango por Cancelación de Cita (`tipo_operacion = 'D'`)
+
+**JSON Entrada (`p_json_entrada`):**
+```json
+{
+  "id_usuario": 65,
+  "fecha_hora": "2026-10-27 08:20",
+  "duracion_minutos": 40,
+  "tipo_operacion": "D",
+  "id_tipo_aseguramiento": 1,
+  "modalidad": "V"
+}
+```
+
+**JSON Salida Exitoso (`p_json_salida`):**
+```json
+{
+  "codigo": 0,
+  "mensaje": "Slots de cita liberados/desmarcados exitosamente",
+  "id_usuario": 65,
+  "fecha": "2026-10-27",
+  "hora_inicio": "08:20",
+  "duracion_minutos": 40,
+  "idx_inicio": 101,
+  "idx_fin": 108,
+  "tipo_operacion": "D",
+  "filas_afectadas": 1
+}
+```
+
+---
+
+### 7. Script del Bloque Anónimo PL/SQL de Prueba
+
+Script listo para ejecutar en Toad, Oracle SQL Developer o PL/SQL Developer para marcar un rango de slots como ocupados:
+
+```sql
+SET SERVEROUTPUT ON SIZE UNLIMITED;
+
+DECLARE
+    -- 1. Payload de entrada para MARCAR (ocupar) una cita de 40 min de 08:20 a 09:00
+    v_json_entrada CLOB := '{
+        "id_usuario": 65,
+        "fecha_hora": "2026-10-27 08:20",
+        "duracion_minutos": 40,
+        "tipo_operacion": "M",
+        "id_tipo_aseguramiento": 1,
+        "modalidad": "V",
+        "id_convenio": null
+    }';
+    
+    v_json_salida CLOB;
+BEGIN
+    -- 2. Invocación del orquestador transaccional PKGLN
+    pkgln_directorio_profesionales.p_actualizar_slots_cita(
+        p_json_entrada => v_json_entrada,
+        p_json_salida  => v_json_salida
+    );
+
+    -- 3. Visualizar resultado con los índices de bits actualizados
+    DBMS_OUTPUT.PUT_LINE('====================================================');
+    DBMS_OUTPUT.PUT_LINE('RESPUESTA ACTUALIZACIÓN DE SLOTS COMO OCUPADOS:');
+    DBMS_OUTPUT.PUT_LINE('====================================================');
+    DBMS_OUTPUT.PUT_LINE(SUBSTR(v_json_salida, 1, 4000));
+END;
+/
+```
+
 

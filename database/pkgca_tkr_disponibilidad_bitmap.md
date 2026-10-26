@@ -31,7 +31,35 @@ Ejecuta la sentencia de actualización física (DML `UPDATE`) sobre los registro
 ### 3. Información que Modifica (Escritura / DML)
 - **Tablas Afectadas:** `tkr_disponibilidad_bitmap`.
 - **Operación Realizada:** `UPDATE tkr_disponibilidad_bitmap`.
-- **Datos Modificados:** Actualiza la cadena binaria `bitmap_ocupado` en el rango de bits especificado y asigna `fecha_actualizacion = SYSTIMESTAMP AT TIME ZONE 'America/Bogota'`.
+- **Datos Modificados:** Actualiza la cadena binaria `bitmap_ocupado` en el rango de bits especificado (`idx_inicio` a `idx_fin`) reemplazando los caracteres por `'1'` (ocupado) o `'0'` (libre) y actualiza `fecha_actualizacion = SYSTIMESTAMP AT TIME ZONE 'America/Bogota'`.
+
+### 4. Script del Bloque Anónimo PL/SQL de Prueba
+```sql
+SET SERVEROUTPUT ON SIZE UNLIMITED;
+
+DECLARE
+    -- Marca bits ocupados del 101 al 108 (ej. 40 minutos de 08:20 a 09:00)
+    v_json_entrada    CLOB := '{
+        "id_usuario": 65,
+        "fecha": "2026-10-27",
+        "idx_inicio": 101,
+        "idx_fin": 108,
+        "caracter_bit": "1",
+        "id_tipo_aseguramiento": 1,
+        "modalidad": "V"
+    }';
+    v_filas_afectadas NUMBER;
+BEGIN
+    pkgca_tkr_disponibilidad_bitmap.p_actualizar_bitmap_ocupado(
+        p_json_entrada    => v_json_entrada,
+        p_filas_afectadas => v_filas_afectadas
+    );
+
+    DBMS_OUTPUT.PUT_LINE('Filas actualizadas en tkr_disponibilidad_bitmap: ' || v_filas_afectadas);
+END;
+/
+```
+
 
 ---
 
