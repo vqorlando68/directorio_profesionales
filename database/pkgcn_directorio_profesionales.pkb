@@ -428,43 +428,79 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
             RETURN;
         END IF;
 
-        -- Paso 4: Generar slots e intervalos discretos según los turnos resueltos
-        v_total_slots := 0;
-        FOR r_turno IN c_turnos(v_tipo_horario_aplica) LOOP
-            DECLARE
-                v_min_inicio NUMBER := f_hora_a_minutos(r_turno.hora_desde);
-                v_min_fin    NUMBER := f_hora_a_minutos(r_turno.hora_hasta);
-                v_actual     NUMBER := v_min_inicio;
-                v_slot_fin   NUMBER;
-                v_idx_inicio NUMBER;
-                v_idx_fin    NUMBER;
+        -- Paso 4: Consultar si existen slots ocupados / citas reservadas en tkr_disponibilidad_bitmap
+        DECLARE
+            v_bitmap_ocupado_db VARCHAR2(288) := RPAD('0', 288, '0');
+        BEGIN
             BEGIN
-                WHILE (v_actual + v_duracion_min) <= v_min_fin LOOP
-                    v_slot_fin := v_actual + v_duracion_min;
-                    
-                    v_slot_obj := JSON_OBJECT_T();
-                    v_slot_obj.put('hora_inicio', f_minutos_a_hora(v_actual));
-                    v_slot_obj.put('hora_fin', f_minutos_a_hora(v_slot_fin));
-                    v_slot_obj.put('duracion_minutos', v_duracion_min);
-                    v_slot_obj.put('id_horario', r_turno.id);
-                    v_slot_obj.put('id_convenio', r_turno.id_convenio);
-                    v_slot_obj.put('disponible', 1);
-                    v_slots_arr.append(v_slot_obj);
-
-                    -- Marcar bits en el vector de bitmap (288 posiciones de 5 min)
-                    v_idx_inicio := TRUNC(v_actual / 5) + 1;
-                    v_idx_fin    := TRUNC(v_slot_fin / 5);
-                    FOR i IN v_idx_inicio..v_idx_fin LOOP
-                        IF i BETWEEN 1 AND 288 THEN
-                            v_bitmap := SUBSTR(v_bitmap, 1, i - 1) || '1' || SUBSTR(v_bitmap, i + 1);
-                        END IF;
-                    END LOOP;
-
-                    v_total_slots := v_total_slots + 1;
-                    v_actual := v_slot_fin;
-                END LOOP;
+                SELECT b.bitmap_ocupado
+                  INTO v_bitmap_ocupado_db
+                  FROM tkr_disponibilidad_bitmap b
+                 WHERE b.id_usuario = p_id_usuario
+                   AND TRUNC(b.fecha) = TRUNC(p_fecha)
+                   AND (p_id_convenio IS NULL OR b.id_convenio = p_id_convenio OR b.id_convenio IS NULL)
+                   AND (p_id_tipo_aseguramiento IS NULL OR b.id_tipo_aseguramiento = p_id_tipo_aseguramiento)
+                   AND (p_modalidad IS NULL OR b.modalidad = p_modalidad)
+                   AND ROWNUM = 1;
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN
+                    v_bitmap_ocupado_db := RPAD('0', 288, '0');
             END;
-        END LOOP;
+
+            -- Generar slots e intervalos discretos según los turnos resueltos descontando ocupados
+            v_total_slots := 0;
+            FOR r_turno IN c_turnos(v_tipo_horario_aplica) LOOP
+                DECLARE
+                    v_min_inicio NUMBER := f_hora_a_minutos(r_turno.hora_desde);
+                    v_min_fin    NUMBER := f_hora_a_minutos(r_turno.hora_hasta);
+                    v_actual     NUMBER := v_min_inicio;
+                    v_slot_fin   NUMBER;
+                    v_idx_inicio NUMBER;
+                    v_idx_fin    NUMBER;
+                    v_ocupado    BOOLEAN;
+                BEGIN
+                    WHILE (v_actual + v_duracion_min) <= v_min_fin LOOP
+                        v_slot_fin := v_actual + v_duracion_min;
+                        v_idx_inicio := TRUNC(v_actual / 5) + 1;
+                        v_idx_fin    := TRUNC(v_slot_fin / 5);
+
+                        -- Validar si alguno de los bits del intervalo está marcado como ocupado ('1')
+                        v_ocupado := FALSE;
+                        FOR i IN v_idx_inicio..v_idx_fin LOOP
+                            IF i BETWEEN 1 AND 288 THEN
+                                IF SUBSTR(v_bitmap_ocupado_db, i, 1) = '1' THEN
+                                    v_ocupado := TRUE;
+                                    EXIT;
+                                END IF;
+                            END IF;
+                        END LOOP;
+
+                        -- Solo se agrega a la lista de disponibles si NO está ocupado
+                        IF NOT v_ocupado THEN
+                            v_slot_obj := JSON_OBJECT_T();
+                            v_slot_obj.put('hora_inicio', f_minutos_a_hora(v_actual));
+                            v_slot_obj.put('hora_fin', f_minutos_a_hora(v_slot_fin));
+                            v_slot_obj.put('duracion_minutos', v_duracion_min);
+                            v_slot_obj.put('id_horario', r_turno.id);
+                            v_slot_obj.put('id_convenio', r_turno.id_convenio);
+                            v_slot_obj.put('disponible', 1);
+                            v_slots_arr.append(v_slot_obj);
+
+                            -- Marcar bits en el vector de bitmap disponible
+                            FOR i IN v_idx_inicio..v_idx_fin LOOP
+                                IF i BETWEEN 1 AND 288 THEN
+                                    v_bitmap := SUBSTR(v_bitmap, 1, i - 1) || '1' || SUBSTR(v_bitmap, i + 1);
+                                END IF;
+                            END LOOP;
+
+                            v_total_slots := v_total_slots + 1;
+                        END IF;
+
+                        v_actual := v_slot_fin;
+                    END LOOP;
+                END;
+            END LOOP;
+        END;
 
         DECLARE
             v_res_obj JSON_OBJECT_T := JSON_OBJECT_T();

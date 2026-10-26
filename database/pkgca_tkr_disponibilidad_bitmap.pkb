@@ -80,6 +80,64 @@ AS
             END;
         END LOOP;
 
+        -- Si no existía registro previo para el profesional y fecha, crearlo (UPSERT)
+        IF v_actualizados = 0 THEN
+            DECLARE
+                v_bm_ocupado VARCHAR2(288) := RPAD('0', 288, '0');
+            BEGIN
+                FOR i IN v_idx_inicio..v_idx_fin LOOP
+                    v_bm_ocupado := SUBSTR(v_bm_ocupado, 1, i - 1) || v_caracter_bit || SUBSTR(v_bm_ocupado, i + 1);
+                END LOOP;
+
+                INSERT INTO tkr_disponibilidad_bitmap (
+                    id_usuario,
+                    fecha,
+                    id_convenio,
+                    id_tipo_aseguramiento,
+                    modalidad,
+                    bitmap_disponible,
+                    bitmap_ocupado,
+                    slots_disponibles,
+                    fecha_actualizacion
+                ) VALUES (
+                    v_id_usuario,
+                    TRUNC(v_fecha_dia),
+                    v_id_convenio,
+                    NVL(v_id_tipo_aseguramiento, 1),
+                    NVL(v_modalidad, 'V'),
+                    RPAD('0', 288, '0'),
+                    v_bm_ocupado,
+                    0,
+                    SYSTIMESTAMP AT TIME ZONE 'America/Bogota'
+                );
+
+                v_actualizados := 1;
+            EXCEPTION
+                WHEN DUP_VAL_ON_INDEX THEN
+                    -- Reintento si otro proceso insertó concurrentemente
+                    FOR r_b IN c_bitmaps LOOP
+                        DECLARE
+                            v_bm_ocupado2 VARCHAR2(288) := NVL(r_b.bitmap_ocupado, RPAD('0', 288, '0'));
+                        BEGIN
+                            IF LENGTH(v_bm_ocupado2) < 288 THEN
+                                v_bm_ocupado2 := RPAD(v_bm_ocupado2, 288, '0');
+                            END IF;
+
+                            FOR i IN v_idx_inicio..v_idx_fin LOOP
+                                v_bm_ocupado2 := SUBSTR(v_bm_ocupado2, 1, i - 1) || v_caracter_bit || SUBSTR(v_bm_ocupado2, i + 1);
+                            END LOOP;
+
+                            UPDATE tkr_disponibilidad_bitmap
+                               SET bitmap_ocupado      = v_bm_ocupado2,
+                                   fecha_actualizacion = SYSTIMESTAMP AT TIME ZONE 'America/Bogota'
+                             WHERE ROWID = r_b.fila_id;
+
+                            v_actualizados := v_actualizados + 1;
+                        END;
+                    END LOOP;
+            END;
+        END IF;
+
         p_filas_afectadas := v_actualizados;
     END p_actualizar_bitmap_ocupado;
 
