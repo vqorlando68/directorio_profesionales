@@ -27,10 +27,18 @@ CREATE OR REPLACE PACKAGE pkgln_directorio_profesionales AS
     );
 
     -- 4. Orquestar la actualización de slots de cita (Marcar/Desmarcar) en el bitmap
+    --    Calcula automáticamente duracion_minutos si no se proporciona, a partir de id_profesional, tipo de aseguramiento y modalidad
     PROCEDURE p_actualizar_slots_cita (
+        p_json_entrada IN  CLOB,
+        p_json_salida  OUT CLOB
+    );
+
+    -- 5. Marcar o desmarcar un rango explícito de slots pasando id_usuario, fecha_hora y duracion_minutos
+    PROCEDURE p_marcar_desmarcar_slots (
         p_json_entrada IN  CLOB,
         p_json_salida  OUT CLOB
     );
 
 END pkgln_directorio_profesionales;
 /
+
