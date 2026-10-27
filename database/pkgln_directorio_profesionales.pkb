@@ -1492,5 +1492,132 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             p_json_salida := v_res_json.to_clob();
     END p_marcar_desmarcar_slots;
 
+    -- 8. Consultar detalle del profesional seleccionado
+    PROCEDURE p_consultar_detalle_profesional (
+        p_json_entrada IN  CLOB,
+        p_json_salida  OUT CLOB
+    ) IS
+        v_obj_in              JSON_OBJECT_T;
+        v_id_usuario          NUMBER(12);
+        v_id_usuario_ejecutor NUMBER(12);
+        v_codigo_traza        VARCHAR2(100);
+
+        v_traza_activa          BOOLEAN := FALSE;
+        v_id_config_traza       NUMBER(12) := NULL;
+        v_id_traza_ejecucion    NUMBER(12) := NULL;
+        v_nivel_detalle_traza   VARCHAR2(30) := 'COMPLETO';
+        v_grabar_payloads_traza NUMBER(1) := 1;
+        v_fecha_inicio_traza    TIMESTAMP := SYSTIMESTAMP;
+    BEGIN
+        IF p_json_entrada IS NULL OR DBMS_LOB.GETLENGTH(p_json_entrada) = 0 THEN
+            DECLARE
+                v_res_err JSON_OBJECT_T := JSON_OBJECT_T();
+            BEGIN
+                v_res_err.put('codigo', -20001);
+                v_res_err.put('error', -20001);
+                v_res_err.put('mensaje', 'Payload requerido');
+                p_json_salida := v_res_err.to_clob();
+            END;
+            RETURN;
+        END IF;
+
+        v_obj_in     := JSON_OBJECT_T.parse(p_json_entrada);
+        v_id_usuario := NVL(v_obj_in.get_number('id_usuario'), v_obj_in.get_number('id'));
+
+        IF v_id_usuario IS NULL THEN
+            DECLARE
+                v_res_err JSON_OBJECT_T := JSON_OBJECT_T();
+            BEGIN
+                v_res_err.put('codigo', -20002);
+                v_res_err.put('error', -20002);
+                v_res_err.put('mensaje', 'El id_usuario o id del profesional es obligatorio');
+                p_json_salida := v_res_err.to_clob();
+            END;
+            RETURN;
+        END IF;
+
+        IF v_obj_in.has('id_usuario_ejecutor') THEN
+            v_id_usuario_ejecutor := v_obj_in.get_number('id_usuario_ejecutor');
+        END IF;
+        IF v_obj_in.has('codigo_traza') THEN
+            v_codigo_traza := v_obj_in.get_string('codigo_traza');
+        END IF;
+        IF v_codigo_traza IS NULL THEN
+            v_codigo_traza := RAWTOHEX(SYS_GUID());
+        END IF;
+
+        -- Telemetría institucional
+        v_traza_activa := uti_manejo_trazas_pkg.f_debe_trazar(
+            p_nombre_paquete => 'PKGLN_DIRECTORIO_PROFESIONALES',
+            p_nombre_metodo  => 'p_consultar_detalle_profesional',
+            p_id_usuario     => v_id_usuario_ejecutor,
+            p_id_config_out  => v_id_config_traza,
+            p_nivel_out      => v_nivel_detalle_traza,
+            p_grabar_pay_out => v_grabar_payloads_traza
+        );
+
+        IF v_traza_activa THEN
+            uti_manejo_trazas_pkg.p_iniciar_traza(
+                p_nombre_paquete   => 'PKGLN_DIRECTORIO_PROFESIONALES',
+                p_nombre_metodo    => 'p_consultar_detalle_profesional',
+                p_id_config        => v_id_config_traza,
+                p_id_usuario       => v_id_usuario_ejecutor,
+                p_codigo_traza     => v_codigo_traza,
+                p_ip_origen        => SYS_CONTEXT('USERENV', 'IP_ADDRESS'),
+                p_json_entrada     => p_json_entrada,
+                p_grabar_payload   => v_grabar_payloads_traza,
+                p_id_ejecucion_out => v_id_traza_ejecucion
+            );
+        END IF;
+
+        -- Delegar consulta relacional multi-tabla a pkgcn_
+        pkgcn_directorio_profesionales.p_consultar_detalle_profesional(
+            p_id_usuario  => v_id_usuario,
+            p_json_salida => p_json_salida
+        );
+
+        IF v_traza_activa AND v_id_traza_ejecucion IS NOT NULL THEN
+            uti_manejo_trazas_pkg.p_finalizar_traza(
+                p_id_ejecucion   => v_id_traza_ejecucion,
+                p_fecha_inicio   => v_fecha_inicio_traza,
+                p_json_salida    => p_json_salida,
+                p_grabar_payload => v_grabar_payloads_traza
+            );
+        END IF;
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            vro_error.tipo                := 'E';
+            vro_error.nombre_programa     := 'PKGLN_DIRECTORIO_PROFESIONALES';
+            vro_error.nombre_metodo       := 'p_consultar_detalle_profesional';
+            vro_error.parametros          := p_json_entrada;
+            vro_error.codigo_error        := TO_CHAR(SQLCODE);
+            vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+            vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
+            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.usuario             := NVL(TO_CHAR(v_id_usuario_ejecutor), USER);
+            vro_error.id_usuario_creacion := v_id_usuario_ejecutor;
+
+            uti_ge_excepciones_pkg.p_grabar_log(vro_error);
+
+            IF v_traza_activa AND v_id_traza_ejecucion IS NOT NULL THEN
+                uti_manejo_trazas_pkg.p_finalizar_traza_error(
+                    p_id_ejecucion  => v_id_traza_ejecucion,
+                    p_fecha_inicio  => v_fecha_inicio_traza,
+                    p_codigo_error  => SQLCODE,
+                    p_mensaje_error => SQLERRM
+                );
+            END IF;
+
+            DECLARE
+                v_res_err JSON_OBJECT_T := JSON_OBJECT_T();
+            BEGIN
+                v_res_err.put('codigo', -20000);
+                v_res_err.put('error', -20000);
+                v_res_err.put('mensaje', 'Error al consultar detalle del profesional: ' || vro_error.mensaje_error);
+                p_json_salida := v_res_err.to_clob();
+            END;
+    END p_consultar_detalle_profesional;
+
 END pkgln_directorio_profesionales;
 /

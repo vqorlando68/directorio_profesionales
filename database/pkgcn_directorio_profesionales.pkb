@@ -326,5 +326,82 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
           FROM DUAL;
     END p_consultar_filtros_catalogo_json;
 
+    -- 4. Consultar información detallada del profesional seleccionado
+    PROCEDURE p_consultar_detalle_profesional (
+        p_id_usuario  IN  NUMBER,
+        p_json_salida OUT CLOB
+    ) IS
+    BEGIN
+        SELECT JSON_OBJECT(
+                   'id'               VALUE u.id,
+                   'fullName'         VALUE TRIM(u.nombres || ' ' || u.apellidos),
+                   'trabaja_festivos' VALUE NVL(u.trabaja_festivos, 'N'),
+                   'slug'             VALUE u.usuario,
+                   'gender'           VALUE DECODE(u.id_genero, 1, 'Masculino', 2, 'Femenino', 3, 'Otro', NULL),
+                   'rate'             VALUE (
+                       SELECT LEAST(ROUND(AVG(ep.satisfacion_medico), 1), 5) 
+                         FROM tkr_encuesta_paciente ep,
+                              tkr_citas             ct,
+                              tkr_cita_usuarios     cu
+                        WHERE ep.id_cita            = ct.id
+                          AND ct.id                 = cu.id_cita
+                          AND cu.id_usuario_atiende = u.id
+                        GROUP BY cu.id_usuario_atiende
+                   ),
+                   'reviews'          VALUE NVL((
+                       SELECT COUNT(1) 
+                         FROM tkr_encuesta_paciente ep,
+                              tkr_citas             ct,
+                              tkr_cita_usuarios     cu
+                        WHERE ep.id_cita            = ct.id
+                          AND ct.id                 = cu.id_cita
+                          AND cu.id_usuario_atiende = u.id
+                        GROUP BY cu.id_usuario_atiende
+                   ), 0),
+                   'specialty'        VALUE (
+                       SELECT COALESCE(
+                                  JSON_ARRAYAGG(
+                                      JSON_OBJECT(
+                                          'id'                  VALUE e.id,
+                                          'nombre_especialidad' VALUE e.nombre_especialidad,
+                                          'tipo_especialidad'   VALUE e.tipo_especialidad
+                                      )
+                                      RETURNING CLOB
+                                  ),
+                                  TO_CLOB('[]')
+                              )
+                         FROM tkr_especialidades_usuario eu,
+                              tkr_especialidades         e
+                        WHERE eu.id_usuario      = u.id
+                          AND e.id               = eu.id_especialidad
+                   ),
+                   'esp_subesp'       VALUE f_nombre_subespecialidades_usuario(u.id),
+                   'subspecialty'     VALUE (
+                       SELECT sue.subespecialidad
+                         FROM tkr_especialidades_usuario eud,
+                              tkr_subespecialidad_usu    sue
+                        WHERE eud.id_usuario             = u.id
+                          AND sue.id_especialidad_usuario = eud.id
+                          AND ROWNUM                     = 1
+                   ),
+                   'img_url'          VALUE CASE
+                                              WHEN f_archivo_foto(u.id) IS NULL THEN
+                                                  pkgca_tkr_parametros.f_consulta_valor(-7) || 'logo_circulo.png'
+                                              ELSE
+                                                  pkgca_tkr_parametros.f_consulta_valor(-7) || f_archivo_foto(u.id)
+                                            END,
+                   'specialtiesIds'   VALUE pkgcn_perfil_profesional.f_ids_especialidades_usuario(u.id)
+                   RETURNING CLOB
+               )
+          INTO p_json_salida
+          FROM tkr_usuarios u
+         WHERE u.id = p_id_usuario;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_json_salida := TO_CLOB('{}');
+        WHEN OTHERS THEN
+            p_json_salida := TO_CLOB('{}');
+    END p_consultar_detalle_profesional;
+
 END pkgcn_directorio_profesionales;
 /

@@ -64,5 +64,11 @@ CREATE OR REPLACE PACKAGE pkgln_directorio_profesionales AS
         p_json_salida  OUT CLOB
     );
 
+    -- 8. Consultar detalle del profesional seleccionado
+    PROCEDURE p_consultar_detalle_profesional (
+        p_json_entrada IN  CLOB,
+        p_json_salida  OUT CLOB
+    );
+
 END pkgln_directorio_profesionales;
 /

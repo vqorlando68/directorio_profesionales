@@ -61,3 +61,18 @@ Recupera los catálogos maestros necesarios para alimentar los selectores de bú
 
 ### 3. Información que Modifica (Escritura / DML)
 - No realiza operaciones DML (procedimiento de solo lectura relacional).
+
+---
+
+## Método: p_consultar_detalle_profesional
+
+### 1. Descripción Funcional en Lenguaje Natural
+Consulta la información de perfil y ficha técnica detallada de un profesional médico específico al ser seleccionado en el directorio, incluyendo calificación promedio (rate), conteo de reseñas (reviews), especialidades, subespecialidad principal, fotografía, slug y género.
+
+### 2. Información que Trae (Lectura / Consultas)
+- **Tablas Consultadas:** `tkr_usuarios` (`u`), `tkr_encuesta_paciente` (`ep`), `tkr_citas` (`ct`), `tkr_cita_usuarios` (`cu`), `tkr_especialidades_usuario` (`eu`/`eud`), `tkr_especialidades` (`e`), `tkr_subespecialidad_usu` (`sue`).
+- **Funciones Utilitarias / Acceso Invocadas:** `f_nombre_subespecialidades_usuario`, `f_archivo_foto`, `pkgca_tkr_parametros.f_consulta_valor`, `pkgcn_perfil_profesional.f_ids_especialidades_usuario`.
+- **Datos Retornados:** Payload JSON con estructura completa: `id`, `fullName`, `trabaja_festivos`, `slug`, `gender`, `rate`, `reviews`, `specialty`, `esp_subesp`, `subspecialty`, `img_url`, `specialtiesIds`.
+
+### 3. Información que Modifica (Escritura / DML)
+- No realiza operaciones DML (procedimiento de solo lectura relacional).

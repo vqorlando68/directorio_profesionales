@@ -133,3 +133,23 @@ Orquesta el marcado o desmarcado explícito de slots pasando parámetros discret
 - Invoca la operación DML mono-tabla en `pkgca_tkr_disponibilidad_bitmap`.
 - Ejecuta **`p_do_commit('pkgln_directorio_profesionales.p_marcar_desmarcar_slots')`**.
 - Control transaccional atómico con `ROLLBACK;` ante incidentes.
+
+---
+
+## Método: p_consultar_detalle_profesional
+
+### 1. Descripción en Lenguaje Natural
+Orquesta la recuperación de la información detallada de un profesional médico al ser seleccionado en el directorio para presentar su ficha técnica o perfil:
+- Extrae y valida el identificador del profesional (`id_usuario` o `id`) recibido en `p_json_entrada`.
+- Inicia y gestiona la telemetría institucional vía `uti_manejo_trazas_pkg`.
+- Delega en `pkgcn_directorio_profesionales.p_consultar_detalle_profesional` la extracción multi-tabla de datos básicos, calificaciones, número de reseñas, especialidades, subespecialidades y enlaces de fotografía.
+- Gobierna excepciones imprevistas persistiendo en `tkr_errores` y retornando estructura JSON sin `RAISE_APPLICATION_ERROR`.
+
+### 2. Mapa de Objetos Invocados y Llamados
+| Orden | Nombre Exacto del Objeto Invocado | Capa / Familia | Tipo | Propósito de la Invocación | Condición / Momento |
+| :---: | :--- | :--- | :--- | :--- | :--- |
+| 1 | `uti_manejo_trazas_pkg.f_debe_trazar` | `uti_` | Función | Comprobar si el método tiene telemetría configurada | Al inicio |
+| 2 | `uti_manejo_trazas_pkg.p_iniciar_traza` | `uti_` | Procedimiento | Registrar apertura en tkr_traza_ejecucion | Si f_debe_trazar = TRUE |
+| 3 | `pkgcn_directorio_profesionales.p_consultar_detalle_profesional` | `pkgcn_` | Procedimiento | Consulta multi-tabla del perfil detallado | Flujo principal |
+| 4 | `uti_manejo_trazas_pkg.p_finalizar_traza` | `uti_` | Procedimiento | Registrar cierre de telemetría | Al finalizar con éxito |
+| 5 | `uti_ge_excepciones_pkg.p_grabar_log` | `uti_` | Procedimiento | Registrar log de excepción en tkr_errores | Bloque WHEN OTHERS |
