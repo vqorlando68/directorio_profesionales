@@ -133,8 +133,8 @@ export default function DirectorioPage() {
 
     const actual = new Date(fInicio);
     let contador = 0;
-    while (actual <= fFin && contador < 31) {
-      // Limitar a 31 días máximo por seguridad
+    while (actual <= fFin && contador < 365) {
+      // Limitar a 365 días máximo por seguridad
       const y = actual.getFullYear();
       const m = String(actual.getMonth() + 1).padStart(2, '0');
       const d = String(actual.getDate()).padStart(2, '0');

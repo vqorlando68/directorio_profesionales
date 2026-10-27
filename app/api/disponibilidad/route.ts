@@ -9,6 +9,21 @@ export async function POST(req: NextRequest) {
 
     // Consulta de disponibilidad para rango de fechas
     if (body.tipo_vista === 'RANGO' && body.fecha_inicio && body.fecha_fin) {
+      // 1. Intentar consulta atómica directa en Oracle mediante PKGLN (ultrarrápida en 1 solo viaje)
+      try {
+        const resPlsql = await executePlsqlJson(
+          'pkgln_directorio_profesionales.p_consultar_disponibilidad',
+          body
+        );
+
+        if (resPlsql && resPlsql.codigo === 0 && Array.isArray(resPlsql.dias_disponibles)) {
+          return NextResponse.json(resPlsql);
+        }
+      } catch (errPlsql: any) {
+        console.warn('Fallback a iteración de fechas en API route:', errPlsql?.message);
+      }
+
+      // 2. Fallback de iteración: admite hasta 365 días (1 año completo)
       const [y1, m1, d1] = body.fecha_inicio.split('-').map(Number);
       const [y2, m2, d2] = body.fecha_fin.split('-').map(Number);
       const fInicio = new Date(y1, m1 - 1, d1);
@@ -18,7 +33,7 @@ export async function POST(req: NextRequest) {
       const actual = new Date(fInicio);
       let contador = 0;
 
-      while (actual <= fFin && contador < 31) {
+      while (actual <= fFin && contador < 365) {
         const y = actual.getFullYear();
         const m = String(actual.getMonth() + 1).padStart(2, '0');
         const d = String(actual.getDate()).padStart(2, '0');
@@ -27,46 +42,52 @@ export async function POST(req: NextRequest) {
         contador++;
       }
 
-      // Ejecución paralela concurrente de todos los días del rango
-      const diasConsultados = await Promise.all(
-        fechasRango.map(async (fechaIso) => {
-          const payloadDia = {
-            id_usuario: body.id_usuario,
-            fecha: fechaIso,
-            tipo_vista: 'DIA',
-            id_convenio: body.id_convenio || null,
-            id_tipo_aseguramiento: body.id_tipo_aseguramiento || 1,
-            modalidad: body.modalidad || 'V'
-          };
+      // Ejecución concurrente en bloques controlados para no saturar conexiones
+      const diasConsultados: any[] = [];
+      const batchSize = 10;
+      for (let i = 0; i < fechasRango.length; i += batchSize) {
+        const batch = fechasRango.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+          batch.map(async (fechaIso) => {
+            const payloadDia = {
+              id_usuario: body.id_usuario,
+              fecha: fechaIso,
+              tipo_vista: 'DIA',
+              id_convenio: body.id_convenio || null,
+              id_tipo_aseguramiento: body.id_tipo_aseguramiento || 1,
+              modalidad: body.modalidad || 'V'
+            };
 
-          try {
-            const resDia = await executePlsqlJson(
-              'pkgln_directorio_profesionales.p_consultar_disponibilidad',
-              payloadDia
-            );
+            try {
+              const resDia = await executePlsqlJson(
+                'pkgln_directorio_profesionales.p_consultar_disponibilidad',
+                payloadDia
+              );
 
-            if (resDia && resDia.codigo === 0) {
-              return resDia;
-            } else {
+              if (resDia && resDia.codigo === 0) {
+                return resDia;
+              } else {
+                return {
+                  fecha: fechaIso,
+                  total_slots: 0,
+                  slots: [],
+                  tipo_horario_aplica: 'NINGUNO',
+                  mensaje: resDia?.mensaje || 'Sin disponibilidad'
+                };
+              }
+            } catch (e: any) {
               return {
                 fecha: fechaIso,
                 total_slots: 0,
                 slots: [],
-                tipo_horario_aplica: 'NINGUNO',
-                mensaje: resDia?.mensaje || 'Sin disponibilidad'
+                tipo_horario_aplica: 'ERROR',
+                mensaje: e.message || 'Error al consultar fecha'
               };
             }
-          } catch (e: any) {
-            return {
-              fecha: fechaIso,
-              total_slots: 0,
-              slots: [],
-              tipo_horario_aplica: 'ERROR',
-              mensaje: e.message || 'Error al consultar fecha'
-            };
-          }
-        })
-      );
+          })
+        );
+        diasConsultados.push(...batchResults);
+      }
 
       // Filtrar solo los días con disponibilidad activa
       const diasConDisponibilidad = diasConsultados.filter(
