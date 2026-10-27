@@ -241,6 +241,41 @@ body {
   background: var(--accent-light);
   color: #065f46;
 }
+.badge-rating {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fef08a;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 700;
+}
+.badge-subspecialty {
+  background: #fae8ff;
+  color: #86198f;
+  border: 1px solid #f0abfc;
+  font-weight: 600;
+}
+.badge-gender {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 500;
+}
+.prof-slug {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+}
+.prof-rating-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.prof-reviews-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
 
 .btn-availability {
   width: 100%;
@@ -584,6 +619,63 @@ body {
   background: #1d4ed8;
   transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(37, 99, 235, 0.35);
+}
+
+/* Días de Atención / Servicio en la tarjeta */
+.prof-days-container {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.prof-days-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.prof-days-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.prof-days-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.badge-day-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+  transition: all 0.15s ease;
+}
+
+.badge-day-pill:hover {
+  background: #4338ca;
+  color: white;
+  border-color: #4338ca;
+}
+
+.prof-days-empty-text {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-style: italic;
 }
 
 

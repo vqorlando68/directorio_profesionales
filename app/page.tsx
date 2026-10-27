@@ -16,20 +16,41 @@ import {
   Check,
   Terminal,
   Code2,
-  PhoneCall
+  PhoneCall,
+  Star,
+  Award,
+  Sparkles
 } from 'lucide-react';
 
+interface SpecialtyItem {
+  id: number;
+  nombre_especialidad: string;
+  tipo_especialidad?: string;
+}
+
 interface Profesional {
-  id_usuario: number;
-  nombre_completo: string;
-  nombres: string;
-  apellidos: string;
-  correo: string;
-  telefono: string;
+  id: number;
+  id_usuario?: number;
+  fullName: string;
+  nombre_completo?: string;
+  nombres?: string;
+  apellidos?: string;
+  correo?: string;
+  telefono?: string;
   trabaja_festivos: string;
-  url_foto: string | null;
-  especialidades: { id: number; nombre: string }[];
-  modalidades: string[];
+  slug?: string;
+  gender?: string | null;
+  rate?: number | null;
+  reviews?: number;
+  specialty?: SpecialtyItem[];
+  especialidades?: { id: number; nombre: string }[];
+  esp_subesp?: string;
+  subspecialty?: string | null;
+  img_url?: string | null;
+  url_foto?: string | null;
+  specialtiesIds?: string;
+  modalidades?: string[];
+  days_of_service?: string[] | string | null;
 }
 
 interface FiltrosCatalogo {
@@ -53,6 +74,24 @@ interface DiaRangoItem {
   diaNombre: string;
   diaNum: string;
   mesNombre: string;
+}
+
+// Helper defensivo para garantizar arreglos válidos incluso si Oracle devuelve cadenas JSON o CLOBs
+function normalizarArreglo<T>(valor: any): T[] {
+  if (!valor) return [];
+  if (Array.isArray(valor)) return valor;
+  if (typeof valor === 'string') {
+    const trimmed = valor.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+  }
+  return [];
 }
 
 export default function DirectorioPage() {
@@ -200,7 +239,9 @@ export default function DirectorioPage() {
         id_tipo_aseguramiento: idTipoAseguramiento || null,
         id_especialidad: idEspecialidad || null,
         id_convenio: idConvenio || null,
-        modalidad: modalidad || null
+        modalidad: modalidad || null,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin
       };
 
       const res = await fetch('/api/directorio', {
@@ -224,7 +265,7 @@ export default function DirectorioPage() {
     } finally {
       setCargando(false);
     }
-  }, [pagina, busqueda, idEspecialidad, idConvenio, idTipoAseguramiento, modalidad]);
+  }, [pagina, busqueda, idEspecialidad, idConvenio, idTipoAseguramiento, modalidad, fechaInicio, fechaFin]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -300,11 +341,12 @@ export default function DirectorioPage() {
 
     const fIni = fechaInicio || new Date().toISOString().split('T')[0];
     const fFin = fechaFin || fIni;
+    const idProf = medico.id || medico.id_usuario || 0;
 
     try {
       // 1. Consultar el rango completo para traer de una vez todos los días y sus intervalos
       const payloadRango = {
-        id_usuario: medico.id_usuario,
+        id_usuario: idProf,
         tipo_vista: 'RANGO',
         fecha_inicio: fIni,
         fecha_fin: fFin,
@@ -370,7 +412,7 @@ export default function DirectorioPage() {
           if (mapaSlots[primerDia]) {
             setSlotsData(mapaSlots[primerDia]);
           } else {
-            cargarSlotsDia(medico.id_usuario, primerDia);
+            cargarSlotsDia(idProf, primerDia);
           }
         } else {
           // No tiene intervalos en todo el rango
@@ -408,7 +450,7 @@ export default function DirectorioPage() {
     if (diasMapModal[fecha]) {
       setSlotsData(diasMapModal[fecha]);
     } else {
-      cargarSlotsDia(medicoSeleccionado.id_usuario, fecha);
+      cargarSlotsDia(medicoSeleccionado.id || medicoSeleccionado.id_usuario || 0, fecha);
     }
   }
 
@@ -421,7 +463,7 @@ export default function DirectorioPage() {
         descripcion:
           'Consulta la disponibilidad horaria, jerarquía de turnos y vector bitmap (288 posiciones de 5 min) de un profesional específico para un día o semana.',
         jsonEntrada: {
-          id_usuario: medicoSeleccionado.id_usuario,
+          id_usuario: medicoSeleccionado.id || medicoSeleccionado.id_usuario || 0,
           fecha: diaSeleccionadoModal || fechaInicio,
           tipo_vista: 'DIA',
           id_convenio: idConvenio || null,
@@ -933,89 +975,194 @@ END;
           </div>
         ) : (
           <div className="professionals-grid">
-            {profesionales.map((prof) => (
-              <div key={prof.id_usuario} className="prof-card">
-                <div className="prof-header">
-                  <img
-                    src={prof.url_foto || 'https://tekerapp.maxapex.net/FILES_DEV_TEKER/logo_circulo.png'}
-                    alt={prof.nombre_completo}
-                    className="prof-avatar"
-                    style={{
-                      width: 64,
-                      height: 64,
-                      minWidth: 64,
-                      minHeight: 64,
-                      maxWidth: 64,
-                      maxHeight: 64,
-                      borderRadius: '50%',
-                      objectFit: 'cover'
-                    }}
-                  />
-                  <div className="prof-info">
-                    <h2 className="prof-name">{prof.nombre_completo}</h2>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {prof.id_usuario}</p>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                      {prof.trabaja_festivos === 'S' && (
-                        <span className="badge badge-festivo">Labora Festivos</span>
-                      )}
+            {profesionales.map((prof) => {
+              const profId = prof.id || prof.id_usuario;
+              const nombre = prof.fullName || prof.nombre_completo || 'Profesional de la Salud';
+              const foto = prof.img_url || prof.url_foto || 'https://tekerapp.maxapex.net/FILES_DEV_TEKER/logo_circulo.png';
+              const tieneCalificacion = prof.rate !== null && prof.rate !== undefined && prof.rate > 0;
+              const listaSpecialty = normalizarArreglo<SpecialtyItem>(prof.specialty);
+              const listaEspecialidades = normalizarArreglo<{ id: number; nombre: string }>(prof.especialidades);
+              const listaModalidades = normalizarArreglo<string>(prof.modalidades);
+              const diasServicio: string[] = (() => {
+                const raw = prof.days_of_service;
+                if (!raw) return [];
+                if (Array.isArray(raw)) return raw;
+                if (typeof raw === 'string') {
+                  const trimmed = raw.trim();
+                  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                    try {
+                      const arr = JSON.parse(trimmed);
+                      if (Array.isArray(arr)) return arr;
+                    } catch {}
+                  }
+                  return trimmed.split(',').map((d: string) => d.trim()).filter(Boolean);
+                }
+                return [];
+              })();
+
+              return (
+                <div key={profId} className="prof-card">
+                  <div className="prof-header">
+                    <img
+                      src={foto}
+                      alt={nombre}
+                      className="prof-avatar"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://tekerapp.maxapex.net/FILES_DEV_TEKER/logo_circulo.png';
+                      }}
+                      style={{
+                        width: 68,
+                        height: 68,
+                        minWidth: 68,
+                        minHeight: 68,
+                        maxWidth: 68,
+                        maxHeight: 68,
+                        borderRadius: '50%',
+                        objectFit: 'cover'
+                      }}
+                    />
+                    <div className="prof-info">
+                      <h2 className="prof-name">{nombre}</h2>
+                      
+                      {/* Slug / ID */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {prof.slug && <span className="prof-slug">@{prof.slug}</span>}
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>ID: {profId}</span>
+                      </div>
+
+                      {/* Calificación y Reseñas */}
+                      <div className="prof-rating-row">
+                        {tieneCalificacion ? (
+                          <>
+                            <span className="badge badge-rating">
+                              <Star size={12} fill="#ca8a04" color="#ca8a04" />
+                              {Number(prof.rate).toFixed(1)}
+                            </span>
+                            <span className="prof-reviews-count">
+                              ({prof.reviews || 0} {prof.reviews === 1 ? 'reseña' : 'reseñas'})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="badge" style={{ background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', fontSize: '0.72rem' }}>
+                            <Star size={11} color="#94a3b8" />
+                            Nuevo
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Badges de Género y Festivos */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                        {prof.gender && (
+                          <span className="badge badge-gender">{prof.gender}</span>
+                        )}
+                        {prof.trabaja_festivos === 'S' && (
+                          <span className="badge badge-festivo">Labora Festivos</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="prof-body">
-                  {/* Especialidades */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                    {prof.especialidades && prof.especialidades.length > 0 ? (
-                      prof.especialidades.map((esp) => (
-                        <span key={esp.id} className="badge badge-specialty">
-                          <Stethoscope size={12} style={{ marginRight: 4, display: 'inline' }} />
-                          {esp.nombre}
+                  <div className="prof-body">
+                    {/* Subespecialidad destacada si existe */}
+                    {prof.subspecialty && (
+                      <div style={{ marginBottom: 8 }}>
+                        <span className="badge badge-subspecialty" title="Subespecialidad principal">
+                          <Award size={12} style={{ marginRight: 4, display: 'inline' }} />
+                          {prof.subspecialty}
                         </span>
-                      ))
-                    ) : (
-                      <span className="badge badge-specialty">Medicina General</span>
+                      </div>
+                    )}
+
+                    {/* Catálogo de Especialidades */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                      {listaSpecialty.length > 0 ? (
+                        listaSpecialty.map((esp) => (
+                          <span key={esp.id} className="badge badge-specialty">
+                            <Stethoscope size={12} style={{ marginRight: 4, display: 'inline' }} />
+                            {esp.nombre_especialidad}
+                          </span>
+                        ))
+                      ) : listaEspecialidades.length > 0 ? (
+                        listaEspecialidades.map((esp) => (
+                          <span key={esp.id} className="badge badge-specialty">
+                            <Stethoscope size={12} style={{ marginRight: 4, display: 'inline' }} />
+                            {esp.nombre}
+                          </span>
+                        ))
+                      ) : prof.esp_subesp ? (
+                        <span className="badge badge-specialty">
+                          <Stethoscope size={12} style={{ marginRight: 4, display: 'inline' }} />
+                          {prof.esp_subesp}
+                        </span>
+                      ) : (
+                        <span className="badge badge-specialty">
+                          <Stethoscope size={12} style={{ marginRight: 4, display: 'inline' }} />
+                          Medicina General
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Modalidades de Atención */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {listaModalidades.includes('V') && (
+                        <span className="badge badge-modality">
+                          <Video size={12} style={{ marginRight: 4, display: 'inline' }} />
+                          Virtual
+                        </span>
+                      )}
+                      {listaModalidades.includes('D') && (
+                        <span className="badge badge-modality">
+                          <MapPin size={12} style={{ marginRight: 4, display: 'inline' }} />
+                          Domiciliaria
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Días de Atención / Horarios */}
+                    <div className="prof-days-container">
+                      <div className="prof-days-header">
+                        <Calendar size={12} style={{ marginRight: 5, color: '#4338ca' }} />
+                        <span className="prof-days-title">Días de servicio:</span>
+                      </div>
+                      {diasServicio.length > 0 ? (
+                        <div className="prof-days-chips">
+                          {diasServicio.map((dia) => (
+                            <span key={dia} className="badge-day-pill" title={`Horario configurado para el día ${dia}`}>
+                              {dia}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="prof-days-empty-text">Sin horarios en el rango</span>
+                      )}
+                    </div>
+
+                    {/* Contacto opcional */}
+                    {prof.correo && (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 2 }}>
+                        <strong>Correo:</strong> {prof.correo}
+                      </p>
+                    )}
+                    {prof.telefono && (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                        <strong>Teléfono:</strong> {prof.telefono}
+                      </p>
                     )}
                   </div>
 
-                  {/* Modalidades admitidas */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                    {prof.modalidades && prof.modalidades.includes('V') && (
-                      <span className="badge badge-modality">
-                        <Video size={12} style={{ marginRight: 4, display: 'inline' }} />
-                        Virtual
-                      </span>
-                    )}
-                    {prof.modalidades && prof.modalidades.includes('D') && (
-                      <span className="badge badge-modality">
-                        <MapPin size={12} style={{ marginRight: 4, display: 'inline' }} />
-                        Domiciliaria
-                      </span>
-                    )}
+                  <div className="prof-footer">
+                    <button
+                      type="button"
+                      className="btn-availability"
+                      onClick={() => abrirDisponibilidad(prof)}
+                    >
+                      <Clock size={16} />
+                      <span>Ver Disponibilidad</span>
+                    </button>
                   </div>
-
-                  {/* Contacto */}
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 4 }}>
-                    <strong>Correo:</strong> {prof.correo}
-                  </p>
-                  {prof.telefono && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      <strong>Teléfono:</strong> {prof.telefono}
-                    </p>
-                  )}
                 </div>
-
-                <div className="prof-footer">
-                  <button
-                    type="button"
-                    className="btn-availability"
-                    onClick={() => abrirDisponibilidad(prof)}
-                  >
-                    <Clock size={16} />
-                    <span>Ver Disponibilidad</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

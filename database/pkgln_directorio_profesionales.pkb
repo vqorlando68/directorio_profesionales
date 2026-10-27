@@ -158,12 +158,23 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         END IF;
 
         -- Regla 3: Consultar turnos multi-tabla desde pkgcn_ y resolver jerarquía de vigencias
-        v_cur_turnos := pkgcn_directorio_profesionales.f_consultar_turnos(
-            p_id_usuario            => p_id_usuario,
-            p_dia_semana            => v_dia_semana,
-            p_id_convenio           => p_id_convenio,
-            p_id_tipo_aseguramiento => p_id_tipo_aseguramiento
-        );
+        DECLARE
+            v_json_turnos_in CLOB;
+        BEGIN
+            SELECT JSON_OBJECT(
+                       'id_usuario'            VALUE p_id_usuario,
+                       'dia_semana'            VALUE v_dia_semana,
+                       'id_convenio'           VALUE p_id_convenio,
+                       'id_tipo_aseguramiento' VALUE p_id_tipo_aseguramiento
+                       RETURNING CLOB
+                   )
+              INTO v_json_turnos_in
+              FROM DUAL;
+
+            v_cur_turnos := pkgcn_directorio_profesionales.f_consultar_turnos(
+                p_json_entrada => v_json_turnos_in
+            );
+        END;
 
         LOOP
             FETCH v_cur_turnos INTO v_rec_id, v_rec_h_desde, v_rec_h_hasta, v_rec_conv, v_rec_aseg, v_rec_f_ini, v_rec_f_fin;
@@ -424,14 +435,8 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
 
         -- Delegar consulta relacional multi-tabla a pkgcn_
         pkgcn_directorio_profesionales.p_consultar_profesionales_json(
-            p_id_especialidad       => v_id_especialidad,
-            p_id_convenio           => v_id_convenio,
-            p_id_tipo_aseguramiento => v_id_tipo_aseguramiento,
-            p_modalidad             => v_modalidad,
-            p_busqueda              => v_busqueda,
-            p_pagina                => v_pagina,
-            p_registros_por_pagina  => v_registros_pagina,
-            p_json_salida           => p_json_salida
+            p_json_entrada => p_json_entrada,
+            p_json_salida  => p_json_salida
         );
 
         -- Cierre de telemetría
@@ -764,8 +769,12 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         p_json_entrada IN  CLOB,
         p_json_salida  OUT CLOB
     ) IS
+        v_res_err JSON_OBJECT_T;
     BEGIN
-        pkgcn_directorio_profesionales.p_consultar_filtros_catalogo_json(p_json_salida);
+        pkgcn_directorio_profesionales.p_consultar_filtros_catalogo_json(
+            p_json_entrada => p_json_entrada,
+            p_json_salida  => p_json_salida
+        );
     EXCEPTION
         WHEN OTHERS THEN
             vro_error.tipo                := 'E';
@@ -780,14 +789,11 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
 
             uti_ge_excepciones_pkg.p_grabar_log(vro_error);
 
-            DECLARE
-                v_res_err JSON_OBJECT_T := JSON_OBJECT_T();
-            BEGIN
-                v_res_err.put('codigo', -20000);
-                v_res_err.put('error', -20000);
-                v_res_err.put('mensaje', 'Error al consultar filtros: ' || vro_error.mensaje_error);
-                p_json_salida := v_res_err.to_clob();
-            END;
+            v_res_err := JSON_OBJECT_T();
+            v_res_err.put('codigo', -20000);
+            v_res_err.put('error', -20000);
+            v_res_err.put('mensaje', 'Error al consultar filtros: ' || vro_error.mensaje_error);
+            p_json_salida := v_res_err.to_clob();
     END p_consultar_filtros;
 
     -- 4. Consultar únicamente los intervalos disponibles de un día en formato 12h AM/PM
@@ -1345,6 +1351,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         v_caracter_bit          VARCHAR2(1);
         v_filas_afectadas       NUMBER := 0;
 
+        v_obj_ca                JSON_OBJECT_T;
         v_json_ca               CLOB;
         v_res_json              JSON_OBJECT_T;
     BEGIN
@@ -1424,25 +1431,22 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             v_caracter_bit := '0';
         END IF;
 
-        DECLARE
-            v_obj_ca JSON_OBJECT_T := JSON_OBJECT_T();
-        BEGIN
-            v_obj_ca.put('id_usuario', v_id_usuario);
-            v_obj_ca.put('fecha', v_fecha_dia_str);
-            v_obj_ca.put('idx_inicio', v_idx_inicio);
-            v_obj_ca.put('idx_fin', v_idx_fin);
-            v_obj_ca.put('caracter_bit', v_caracter_bit);
-            IF v_id_convenio IS NOT NULL THEN
-                v_obj_ca.put('id_convenio', v_id_convenio);
-            END IF;
-            IF v_id_tipo_aseguramiento IS NOT NULL THEN
-                v_obj_ca.put('id_tipo_aseguramiento', v_id_tipo_aseguramiento);
-            END IF;
-            IF v_modalidad IS NOT NULL THEN
-                v_obj_ca.put('modalidad', v_modalidad);
-            END IF;
-            v_json_ca := v_obj_ca.to_clob();
-        END;
+        v_obj_ca := JSON_OBJECT_T();
+        v_obj_ca.put('id_usuario', v_id_usuario);
+        v_obj_ca.put('fecha', v_fecha_dia_str);
+        v_obj_ca.put('idx_inicio', v_idx_inicio);
+        v_obj_ca.put('idx_fin', v_idx_fin);
+        v_obj_ca.put('caracter_bit', v_caracter_bit);
+        IF v_id_convenio IS NOT NULL THEN
+            v_obj_ca.put('id_convenio', v_id_convenio);
+        END IF;
+        IF v_id_tipo_aseguramiento IS NOT NULL THEN
+            v_obj_ca.put('id_tipo_aseguramiento', v_id_tipo_aseguramiento);
+        END IF;
+        IF v_modalidad IS NOT NULL THEN
+            v_obj_ca.put('modalidad', v_modalidad);
+        END IF;
+        v_json_ca := v_obj_ca.to_clob();
 
         pkgca_tkr_disponibilidad_bitmap.p_actualizar_bitmap_ocupado(
             p_json_entrada    => v_json_ca,
@@ -1498,6 +1502,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         p_json_salida  OUT CLOB
     ) IS
         v_obj_in              JSON_OBJECT_T;
+        v_res_err             JSON_OBJECT_T;
         v_id_usuario          NUMBER(12);
         v_id_usuario_ejecutor NUMBER(12);
         v_codigo_traza        VARCHAR2(100);
@@ -1510,14 +1515,11 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         v_fecha_inicio_traza    TIMESTAMP := SYSTIMESTAMP;
     BEGIN
         IF p_json_entrada IS NULL OR DBMS_LOB.GETLENGTH(p_json_entrada) = 0 THEN
-            DECLARE
-                v_res_err JSON_OBJECT_T := JSON_OBJECT_T();
-            BEGIN
-                v_res_err.put('codigo', -20001);
-                v_res_err.put('error', -20001);
-                v_res_err.put('mensaje', 'Payload requerido');
-                p_json_salida := v_res_err.to_clob();
-            END;
+            v_res_err := JSON_OBJECT_T();
+            v_res_err.put('codigo', -20001);
+            v_res_err.put('error', -20001);
+            v_res_err.put('mensaje', 'Payload requerido');
+            p_json_salida := v_res_err.to_clob();
             RETURN;
         END IF;
 
@@ -1525,14 +1527,11 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         v_id_usuario := NVL(v_obj_in.get_number('id_usuario'), v_obj_in.get_number('id'));
 
         IF v_id_usuario IS NULL THEN
-            DECLARE
-                v_res_err JSON_OBJECT_T := JSON_OBJECT_T();
-            BEGIN
-                v_res_err.put('codigo', -20002);
-                v_res_err.put('error', -20002);
-                v_res_err.put('mensaje', 'El id_usuario o id del profesional es obligatorio');
-                p_json_salida := v_res_err.to_clob();
-            END;
+            v_res_err := JSON_OBJECT_T();
+            v_res_err.put('codigo', -20002);
+            v_res_err.put('error', -20002);
+            v_res_err.put('mensaje', 'El id_usuario o id del profesional es obligatorio');
+            p_json_salida := v_res_err.to_clob();
             RETURN;
         END IF;
 
@@ -1572,8 +1571,8 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
 
         -- Delegar consulta relacional multi-tabla a pkgcn_
         pkgcn_directorio_profesionales.p_consultar_detalle_profesional(
-            p_id_usuario  => v_id_usuario,
-            p_json_salida => p_json_salida
+            p_json_entrada => p_json_entrada,
+            p_json_salida  => p_json_salida
         );
 
         IF v_traza_activa AND v_id_traza_ejecucion IS NOT NULL THEN
@@ -1609,14 +1608,11 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
                 );
             END IF;
 
-            DECLARE
-                v_res_err JSON_OBJECT_T := JSON_OBJECT_T();
-            BEGIN
-                v_res_err.put('codigo', -20000);
-                v_res_err.put('error', -20000);
-                v_res_err.put('mensaje', 'Error al consultar detalle del profesional: ' || vro_error.mensaje_error);
-                p_json_salida := v_res_err.to_clob();
-            END;
+            v_res_err := JSON_OBJECT_T();
+            v_res_err.put('codigo', -20000);
+            v_res_err.put('error', -20000);
+            v_res_err.put('mensaje', 'Error al consultar detalle del profesional: ' || vro_error.mensaje_error);
+            p_json_salida := v_res_err.to_clob();
     END p_consultar_detalle_profesional;
 
 END pkgln_directorio_profesionales;

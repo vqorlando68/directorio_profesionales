@@ -153,3 +153,61 @@ Orquesta la recuperación de la información detallada de un profesional médico
 | 3 | `pkgcn_directorio_profesionales.p_consultar_detalle_profesional` | `pkgcn_` | Procedimiento | Consulta multi-tabla del perfil detallado | Flujo principal |
 | 4 | `uti_manejo_trazas_pkg.p_finalizar_traza` | `uti_` | Procedimiento | Registrar cierre de telemetría | Al finalizar con éxito |
 | 5 | `uti_ge_excepciones_pkg.p_grabar_log` | `uti_` | Procedimiento | Registrar log de excepción en tkr_errores | Bloque WHEN OTHERS |
+
+---
+
+## 4. Esquemas y Payloads JSON de Ejemplo
+
+### Payload JSON de Entrada (`p_consultar_directorio`):
+```json
+{
+  "pagina": 1,
+  "registros_pagina": 12,
+  "busqueda": "Carlos",
+  "id_especialidad": 3,
+  "id_convenio": null,
+  "id_tipo_aseguramiento": 1,
+  "modalidad": "V"
+}
+```
+
+### Payload JSON de Salida (`p_consultar_directorio`):
+```json
+{
+  "codigo": 0,
+  "mensaje": "Directorio consultado exitosamente",
+  "total_registros": 42,
+  "total_paginas": 4,
+  "pagina_actual": 1,
+  "registros_pagina": 12,
+  "profesionales": [
+    {
+      "id": 105,
+      "id_usuario": 105,
+      "fullName": "Carlos Andrés Mendoza Rojas",
+      "nombre_completo": "Carlos Andrés Mendoza Rojas",
+      "trabaja_festivos": "S",
+      "slug": "cmendoza",
+      "gender": "Masculino",
+      "rate": 4.9,
+      "reviews": 38,
+      "specialty": [
+        {
+          "id": 3,
+          "nombre_especialidad": "Cardiología",
+          "tipo_especialidad": "Médica"
+        }
+      ],
+      "esp_subesp": "Cardiología / Electrofisiología",
+      "subspecialty": "Electrofisiología",
+      "days_of_service": "LU, MA, MI, JU, VI",
+      "img_url": "https://tekerapp.maxapex.net/FILES_DEV_TEKER/foto_cmendoza.png",
+      "specialtiesIds": "3,12",
+      "modalidades": ["V", "D"],
+      "correo": "cmendoza@teker.com",
+      "telefono": "+57 300 123 4567"
+    }
+  ]
+}
+```
+
