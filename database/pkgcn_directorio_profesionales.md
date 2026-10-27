@@ -24,8 +24,7 @@ Consulta el directorio de profesionales de la salud que se encuentran plenamente
   - Tipo de aseguramiento: `h.id_tipo_aseguramiento = TO_NUMBER(JSON_VALUE(p_json_entrada, '$.id_tipo_aseguramiento'))`.
   - Modalidad: `f.modalidad = UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.modalidad')))`.
   - Búsqueda textual: `LIKE '%' || UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.busqueda'))) || '%'`.
-  - Paginación server-side mediante `OFFSET ... FETCH NEXT ... ROWS ONLY` calculada con `JSON_VALUE(p_json_entrada, '$.registros_pagina')` y `JSON_VALUE(p_json_entrada, '$.pagina')`.
-- **Datos Retornados:** Parámetro `p_json_salida` con total de registros, total de páginas, página actual y la lista de profesionales (`profesionales`) donde cada registro cuenta con la estructura estándar e idéntica de `p_consultar_detalle_profesional`: `id`, `fullName`, `trabaja_festivos`, `slug`, `gender`, `rate`, `reviews`, `specialty`, `esp_subesp`, `subspecialty`, `img_url`, `specialtiesIds`, `modalidades`, `correo` y `telefono`.
+- **Datos Retornados:** Parámetro `p_json_salida` con total de registros, total de páginas, página actual y la lista de profesionales (`profesionales`) donde cada registro cuenta con la estructura estándar e idéntica de `p_consultar_detalle_profesional`: `id`, `fullName`, `trabaja_festivos`, `slug`, `gender`, `rate`, `reviews`, `specialty` (arreglo JSON nativo mediante `FORMAT JSON` con `[{ id, nombre_especialidad, tipo_especialidad }]`), `esp_subesp`, `subspecialty`, `days_of_service`, `img_url`, `specialtiesIds`, `modalidades` (arreglo JSON nativo mediante `FORMAT JSON` con `["V", "D"]`), `correo` y `telefono`.
 
 ### 3. Información que Modifica (Escritura / DML)
 - No realiza operaciones DML (procedimiento de solo lectura relacional).

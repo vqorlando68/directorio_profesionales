@@ -234,7 +234,7 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                                       tkr_especialidades         e
                                 WHERE eu.id_usuario      = prof.id
                                   AND e.id               = eu.id_especialidad
-                           ),
+                            ) FORMAT JSON,
                            'esp_subesp'       VALUE f_nombre_subespecialidades_usuario(prof.id),
                            'subspecialty'     VALUE (
                                SELECT sue.subespecialidad
@@ -271,7 +271,7 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                                        WHERE f.activo = 1
                                   ) m
                                  WHERE m.id_usuario = prof.id
-                           ),
+                            ) FORMAT JSON,
                            'correo'           VALUE prof.correo_electronico,
                            'telefono'         VALUE prof.telefono
                        )
@@ -524,7 +524,7 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                               tkr_especialidades         e
                         WHERE eu.id_usuario      = u.id
                           AND e.id               = eu.id_especialidad
-                   ),
+                    ) FORMAT JSON,
                    'esp_subesp'       VALUE f_nombre_subespecialidades_usuario(u.id),
                    'subspecialty'     VALUE (
                        SELECT sue.subespecialidad
@@ -552,7 +552,21 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                                               ELSE
                                                   pkgca_tkr_parametros.f_consulta_valor(-7) || f_archivo_foto(u.id)
                                             END,
-                   'specialtiesIds'   VALUE pkgcn_perfil_profesional.f_ids_especialidades_usuario(u.id)
+                   'specialtiesIds'   VALUE pkgcn_perfil_profesional.f_ids_especialidades_usuario(u.id),
+                    'modalidades'      VALUE (
+                        SELECT COALESCE(
+                                   JSON_ARRAYAGG(m.modalidad RETURNING CLOB),
+                                   TO_CLOB('[]')
+                               )
+                           FROM (
+                               SELECT DISTINCT f.id_usuario, NVL(f.modalidad, 'TODAS') AS modalidad
+                                 FROM tkr_franjas_profesional f
+                                WHERE f.activo = 1
+                           ) m
+                          WHERE m.id_usuario = u.id
+                    ) FORMAT JSON,
+                    'correo'           VALUE u.correo_electronico,
+                    'telefono'         VALUE u.telefono
                    RETURNING CLOB
                )
           INTO p_json_salida
