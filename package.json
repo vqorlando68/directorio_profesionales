@@ -10,11 +10,12 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "lucide-react": "^0.453.0",
     "next": "^14.2.15",
+    "oracledb": "^6.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "oracledb": "^6.6.0",
-    "lucide-react": "^0.453.0"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20.16.11",

@@ -678,4 +678,404 @@ body {
   font-style: italic;
 }
 
+/* ==========================================================================
+   MODULO Y MODAL: SIN DISPONIBILIDAD & EXPORTACIÓN EXCEL
+   ========================================================================== */
+
+/* Botón disparador Sin Disponibilidad */
+.btn-sin-disp {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff1f2;
+  color: #e11d48;
+  border: 1.5px solid #fecdd3;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(225, 29, 72, 0.08);
+}
+
+.btn-sin-disp:hover {
+  background: #ffe4e6;
+  border-color: #fda4af;
+  color: #be123c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px -1px rgba(225, 29, 72, 0.18);
+}
+
+.btn-sin-disp:active {
+  transform: translateY(0);
+}
+
+/* Botón Exportar Excel */
+.btn-export-excel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #059669;
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+}
+
+.btn-export-excel:hover:not(:disabled) {
+  background: #047857;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(5, 150, 105, 0.3);
+}
+
+.btn-export-excel:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Estructura Modal Sin Disponibilidad */
+.modal-sin-disp-container {
+  background: #ffffff;
+  width: 95%;
+  max-width: 920px;
+  height: 85vh;
+  max-height: 85vh;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalScaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalScaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.sin-disp-header-badge {
+  background: #ffe4e6;
+  color: #e11d48;
+  border: 1px solid #fecdd3;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sin-disp-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+
+.sin-disp-search-box {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+.sin-disp-tabs-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #e2e8f0;
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.sin-disp-tab-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #475569;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.sin-disp-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.sin-disp-content-scroll {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Tarjeta de Especialidad */
+.sin-disp-spec-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease;
+  flex-shrink: 0; /* IMPEDIR QUE FLEXBOX APLASTE LAS TARJETAS */
+  min-height: fit-content;
+}
+
+.sin-disp-spec-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.05);
+}
+
+.sin-disp-spec-card.empty-specialty {
+  background: #fafaf9;
+  border-color: #e7e5e4;
+  flex-shrink: 0;
+}
+
+.sin-disp-spec-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: linear-gradient(to right, #f8fafc, #f1f5f9);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sin-disp-spec-header.accordion-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.sin-disp-spec-header.accordion-header:hover {
+  background: linear-gradient(to right, #f1f5f9, #e2e8f0);
+}
+
+.sin-disp-spec-card.empty-specialty .sin-disp-spec-header {
+  background: linear-gradient(to right, #fafaf9, #f5f5f4);
+  border-bottom-color: #e7e5e4;
+}
+
+.sin-disp-spec-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.sin-disp-spec-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.accordion-arrow {
+  color: #64748b;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.accordion-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+.sin-disp-spec-count {
+  font-size: 0.76rem;
+  font-weight: 700;
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid #fca5a5;
+}
+
+.sin-disp-spec-count.empty-badge {
+  background: #f3f4f6;
+  color: #6b7280;
+  border-color: #d1d5db;
+}
+
+/* Contenido cuando la especialidad no tiene médicos */
+.sin-disp-empty-info {
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #64748b;
+  font-size: 0.84rem;
+  flex-shrink: 0;
+}
+
+.sin-disp-empty-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+}
+
+/* Cuadrícula organizada para especialidades sin médicos */
+.sin-disp-grid-empty {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.sin-disp-empty-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+
+.sin-disp-empty-card:hover {
+  border-color: #cbd5e1;
+}
+
+/* Barra de control para Expandir/Contraer */
+.sin-disp-expand-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.btn-link-action {
+  background: transparent;
+  border: none;
+  color: #0284c7;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.btn-link-action:hover {
+  background: #e0f2fe;
+}
+
+/* Lista de Médicos */
+.sin-disp-doc-list {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  animation: fadeIn 0.2s ease;
+}
+
+.sin-disp-doc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  gap: 14px;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background-color 0.15s ease;
+}
+
+.sin-disp-doc-row:last-child {
+  border-bottom: none;
+}
+
+.sin-disp-doc-row:hover {
+  background-color: #f8fafc;
+}
+
+.sin-disp-doc-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  font-weight: 700;
+  font-size: 0.88rem;
+  border: 1.5px solid #cbd5e1;
+  flex-shrink: 0;
+}
+
+.sin-disp-doc-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sin-disp-doc-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sin-disp-doc-contact {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.78rem;
+  color: #64748b;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.sin-disp-doc-contact-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sin-disp-doc-badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+
+
 

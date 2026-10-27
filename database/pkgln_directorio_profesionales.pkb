@@ -1615,5 +1615,347 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             p_json_salida := v_res_err.to_clob();
     END p_consultar_detalle_profesional;
 
+    -- 9. Consultar profesionales sin disponibilidad horaria en un rango de fechas agrupados por especialidad
+    PROCEDURE p_consultar_sin_disponibilidad (
+        p_json_entrada IN  CLOB,
+        p_json_salida  OUT CLOB
+    ) IS
+        v_obj_in                    JSON_OBJECT_T;
+        v_res_out                   JSON_OBJECT_T;
+        v_res_err                   JSON_OBJECT_T;
+        v_arr_especialidades        JSON_ARRAY_T := JSON_ARRAY_T();
+        v_arr_doctores              JSON_ARRAY_T;
+        v_obj_esp                   JSON_OBJECT_T;
+        v_obj_doc                   JSON_OBJECT_T;
+
+        v_fecha_ini_str             VARCHAR2(30);
+        v_fecha_fin_str             VARCHAR2(30);
+        v_fecha_inicio              DATE;
+        v_fecha_fin                 DATE;
+        v_id_convenio               NUMBER(12);
+        v_id_tipo_aseguramiento     NUMBER(12);
+        v_modalidad                 VARCHAR2(2);
+        v_id_especialidad_fil       NUMBER(12);
+
+        v_id_usuario_ejecutor       NUMBER(12) := 1;
+        v_codigo_traza              VARCHAR2(100);
+        v_id_traza_ejecucion        NUMBER(12);
+        v_id_config_traza           NUMBER(12);
+        v_nivel_detalle_traza       VARCHAR2(20);
+        v_grabar_payloads_traza     VARCHAR2(1);
+        v_traza_activa              BOOLEAN;
+        v_fecha_inicio_traza        TIMESTAMP := SYSTIMESTAMP;
+
+        -- Cursor de todas las especialidades del sistema
+        CURSOR c_todas_especialidades IS
+            SELECT e.id AS id_especialidad,
+                   e.nombre_especialidad
+              FROM tkr_especialidades e
+             WHERE (v_id_especialidad_fil IS NULL OR e.id = v_id_especialidad_fil)
+             ORDER BY e.nombre_especialidad ASC;
+
+        -- Cursor de médicos habilitados
+        CURSOR c_profesionales IS
+            SELECT u.id AS id_usuario,
+                   TRIM(u.nombres || ' ' || u.apellidos) AS nombre_completo,
+                   u.correo_electronico,
+                   u.telefono
+              FROM tkr_usuarios u
+             WHERE u.estado = 'A'
+               AND NVL(u.ocultar_directorio, 'N') = 'N'
+             ORDER BY u.nombres, u.apellidos;
+
+        -- Cursor de especialidades asignadas al médico
+        CURSOR c_especialidades_doc (cp_id_usuario NUMBER) IS
+            SELECT eu.id_especialidad,
+                   e.nombre_especialidad
+              FROM tkr_especialidades_usuario eu,
+                   tkr_especialidades         e
+             WHERE eu.id_usuario      = cp_id_usuario
+               AND e.id               = eu.id_especialidad;
+
+        v_payload_disp              JSON_OBJECT_T;
+        v_salida_disp               CLOB;
+        v_obj_disp                  JSON_OBJECT_T;
+        v_total_slots_rango         NUMBER := 0;
+        v_dias_servicio             VARCHAR2(200);
+        v_motivo                    VARCHAR2(200);
+
+        TYPE t_doctor_sin_disp IS RECORD (
+            id_usuario      NUMBER(12),
+            nombre_completo VARCHAR2(200),
+            correo          VARCHAR2(200),
+            telefono        VARCHAR2(50),
+            days_of_service VARCHAR2(200),
+            motivo          VARCHAR2(200),
+            id_especialidad NUMBER(12),
+            nombre_esp      VARCHAR2(150)
+        );
+        TYPE t_tab_doctores IS TABLE OF t_doctor_sin_disp INDEX BY PLS_INTEGER;
+        v_doctores_sin_disp         t_tab_doctores;
+        v_idx_doc                   PLS_INTEGER := 0;
+
+        v_total_sin_disp            NUMBER := 0;
+        v_total_esp_sin_medicos     NUMBER := 0;
+        v_total_med_sin_cupos       NUMBER := 0;
+        v_docs_en_esp               PLS_INTEGER := 0;
+    BEGIN
+        IF p_json_entrada IS NOT NULL THEN
+            v_obj_in := JSON_OBJECT_T.parse(p_json_entrada);
+            IF v_obj_in.has('fecha_inicio') THEN
+                v_fecha_ini_str := v_obj_in.get_string('fecha_inicio');
+            END IF;
+            IF v_obj_in.has('fecha_fin') THEN
+                v_fecha_fin_str := v_obj_in.get_string('fecha_fin');
+            END IF;
+            IF v_obj_in.has('id_convenio') THEN
+                v_id_convenio := v_obj_in.get_number('id_convenio');
+            END IF;
+            IF v_obj_in.has('id_tipo_aseguramiento') THEN
+                v_id_tipo_aseguramiento := v_obj_in.get_number('id_tipo_aseguramiento');
+            END IF;
+            IF v_obj_in.has('modalidad') THEN
+                v_modalidad := v_obj_in.get_string('modalidad');
+            END IF;
+            IF v_obj_in.has('codigo_traza') THEN
+                v_codigo_traza := v_obj_in.get_string('codigo_traza');
+            END IF;
+            IF v_obj_in.has('id_usuario_ejecutor') THEN
+                v_id_usuario_ejecutor := v_obj_in.get_number('id_usuario_ejecutor');
+            END IF;
+            IF v_obj_in.has('id_especialidad') THEN
+                v_id_especialidad_fil := v_obj_in.get_number('id_especialidad');
+            END IF;
+        END IF;
+
+        IF v_codigo_traza IS NULL THEN
+            v_codigo_traza := RAWTOHEX(SYS_GUID());
+        END IF;
+
+        IF v_fecha_ini_str IS NOT NULL THEN
+            IF INSTR(v_fecha_ini_str, '/') > 0 THEN
+                v_fecha_inicio := TRUNC(TO_DATE(SUBSTR(v_fecha_ini_str, 1, 10), 'DD/MM/YYYY'));
+            ELSE
+                v_fecha_inicio := TRUNC(TO_DATE(SUBSTR(v_fecha_ini_str, 1, 10), 'YYYY-MM-DD'));
+            END IF;
+        ELSE
+            v_fecha_inicio := TRUNC(SYSDATE);
+        END IF;
+
+        IF v_fecha_fin_str IS NOT NULL THEN
+            IF INSTR(v_fecha_fin_str, '/') > 0 THEN
+                v_fecha_fin := TRUNC(TO_DATE(SUBSTR(v_fecha_fin_str, 1, 10), 'DD/MM/YYYY'));
+            ELSE
+                v_fecha_fin := TRUNC(TO_DATE(SUBSTR(v_fecha_fin_str, 1, 10), 'YYYY-MM-DD'));
+            END IF;
+        ELSE
+            v_fecha_fin := v_fecha_inicio + 6;
+        END IF;
+
+        IF v_fecha_fin < v_fecha_inicio THEN
+            v_fecha_fin := v_fecha_inicio;
+        END IF;
+
+        -- Telemetría
+        v_traza_activa := uti_manejo_trazas_pkg.f_debe_trazar(
+            p_nombre_paquete => 'PKGLN_DIRECTORIO_PROFESIONALES',
+            p_nombre_metodo  => 'p_consultar_sin_disponibilidad',
+            p_id_usuario     => v_id_usuario_ejecutor,
+            p_id_config_out  => v_id_config_traza,
+            p_nivel_out      => v_nivel_detalle_traza,
+            p_grabar_pay_out => v_grabar_payloads_traza
+        );
+
+        IF v_traza_activa THEN
+            uti_manejo_trazas_pkg.p_iniciar_traza(
+                p_nombre_paquete   => 'PKGLN_DIRECTORIO_PROFESIONALES',
+                p_nombre_metodo    => 'p_consultar_sin_disponibilidad',
+                p_id_config        => v_id_config_traza,
+                p_id_usuario       => v_id_usuario_ejecutor,
+                p_codigo_traza     => v_codigo_traza,
+                p_ip_origen        => SYS_CONTEXT('USERENV', 'IP_ADDRESS'),
+                p_json_entrada     => p_json_entrada,
+                p_grabar_payload   => v_grabar_payloads_traza,
+                p_id_ejecucion_out => v_id_traza_ejecucion
+            );
+        END IF;
+
+        -- 1. Evaluar disponibilidad de cada médico habilitado
+        FOR r_prof IN c_profesionales LOOP
+            v_payload_disp := JSON_OBJECT_T();
+            v_payload_disp.put('id_usuario', r_prof.id_usuario);
+            v_payload_disp.put('tipo_vista', 'RANGO');
+            v_payload_disp.put('fecha_inicio', TO_CHAR(v_fecha_inicio, 'YYYY-MM-DD'));
+            v_payload_disp.put('fecha_fin', TO_CHAR(v_fecha_fin, 'YYYY-MM-DD'));
+            IF v_id_convenio IS NOT NULL THEN
+                v_payload_disp.put('id_convenio', v_id_convenio);
+            END IF;
+            IF v_id_tipo_aseguramiento IS NOT NULL THEN
+                v_payload_disp.put('id_tipo_aseguramiento', v_id_tipo_aseguramiento);
+            END IF;
+            IF v_modalidad IS NOT NULL THEN
+                v_payload_disp.put('modalidad', v_modalidad);
+            END IF;
+
+            p_consultar_disponibilidad(
+                p_json_entrada => v_payload_disp.to_clob(),
+                p_json_salida  => v_salida_disp
+            );
+
+            v_obj_disp := JSON_OBJECT_T.parse(v_salida_disp);
+            v_total_slots_rango := NVL(v_obj_disp.get_number('total_slots_rango'), 0);
+
+            -- Si no tiene intervalos disponibles en el rango
+            IF v_total_slots_rango = 0 THEN
+                v_dias_servicio := pkgcn_directorio_profesionales.f_dias_servicio_profesional(
+                    r_prof.id_usuario,
+                    TO_CHAR(v_fecha_inicio, 'YYYY-MM-DD'),
+                    TO_CHAR(v_fecha_fin, 'YYYY-MM-DD'),
+                    v_id_convenio,
+                    v_id_tipo_aseguramiento
+                );
+
+                IF v_dias_servicio IS NULL THEN
+                    v_motivo := 'Sin horarios programados en el rango';
+                ELSE
+                    v_motivo := 'Horarios configurados (' || v_dias_servicio || ') pero sin slots libres';
+                END IF;
+
+                -- Asociar a las especialidades asignadas al médico
+                FOR r_esp IN c_especialidades_doc(r_prof.id_usuario) LOOP
+                    IF v_id_especialidad_fil IS NULL OR r_esp.id_especialidad = v_id_especialidad_fil THEN
+                        v_idx_doc := v_idx_doc + 1;
+                        v_doctores_sin_disp(v_idx_doc).id_usuario      := r_prof.id_usuario;
+                        v_doctores_sin_disp(v_idx_doc).nombre_completo := r_prof.nombre_completo;
+                        v_doctores_sin_disp(v_idx_doc).correo          := r_prof.correo_electronico;
+                        v_doctores_sin_disp(v_idx_doc).telefono        := r_prof.telefono;
+                        v_doctores_sin_disp(v_idx_doc).days_of_service := NVL(v_dias_servicio, 'Sin horarios');
+                        v_doctores_sin_disp(v_idx_doc).motivo          := v_motivo;
+                        v_doctores_sin_disp(v_idx_doc).id_especialidad := r_esp.id_especialidad;
+                        v_doctores_sin_disp(v_idx_doc).nombre_esp      := r_esp.nombre_especialidad;
+                    END IF;
+                END LOOP;
+
+                v_total_med_sin_cupos := v_total_med_sin_cupos + 1;
+            END IF;
+        END LOOP;
+
+        -- 2. Recorrer TODAS las especialidades del sistema e incluir tanto las que no tienen médicos
+        -- como las que tienen médicos con 0 cupos
+        FOR r_todas IN c_todas_especialidades LOOP
+            v_docs_en_esp := 0;
+            v_arr_doctores := JSON_ARRAY_T();
+
+            FOR j IN 1..v_idx_doc LOOP
+                IF v_doctores_sin_disp(j).id_especialidad = r_todas.id_especialidad THEN
+                    v_docs_en_esp := v_docs_en_esp + 1;
+                    v_obj_doc := JSON_OBJECT_T();
+                    v_obj_doc.put('id', v_doctores_sin_disp(j).id_usuario);
+                    v_obj_doc.put('id_usuario', v_doctores_sin_disp(j).id_usuario);
+                    v_obj_doc.put('fullName', v_doctores_sin_disp(j).nombre_completo);
+                    v_obj_doc.put('nombre_completo', v_doctores_sin_disp(j).nombre_completo);
+                    v_obj_doc.put('correo', v_doctores_sin_disp(j).correo);
+                    v_obj_doc.put('telefono', v_doctores_sin_disp(j).telefono);
+                    v_obj_doc.put('days_of_service', v_doctores_sin_disp(j).days_of_service);
+                    v_obj_doc.put('motivo', v_doctores_sin_disp(j).motivo);
+                    v_arr_doctores.append(v_obj_doc);
+                END IF;
+            END LOOP;
+
+            -- Verificar si la especialidad tiene profesionales asignados en BD
+            DECLARE
+                v_cant_asignados NUMBER := 0;
+            BEGIN
+                SELECT COUNT(1)
+                  INTO v_cant_asignados
+                  FROM tkr_especialidades_usuario eu,
+                       tkr_usuarios               u
+                 WHERE eu.id_especialidad = r_todas.id_especialidad
+                   AND u.id               = eu.id_usuario
+                   AND u.estado           = 'A'
+                   AND NVL(u.ocultar_directorio, 'N') = 'N';
+
+                IF v_cant_asignados = 0 THEN
+                    -- Caso: Especialidad sin médicos asignados
+                    v_total_esp_sin_medicos := v_total_esp_sin_medicos + 1;
+                    v_total_sin_disp        := v_total_sin_disp + 1;
+
+                    v_obj_esp := JSON_OBJECT_T();
+                    v_obj_esp.put('id_especialidad', r_todas.id_especialidad);
+                    v_obj_esp.put('nombre_especialidad', r_todas.nombre_especialidad);
+                    v_obj_esp.put('tiene_profesionales', false);
+                    v_obj_esp.put('tipo', 'SIN_PROFESIONALES');
+                    v_obj_esp.put('total_profesionales', 0);
+                    v_obj_esp.put('profesionales', JSON_ARRAY_T());
+                    v_arr_especialidades.append(v_obj_esp);
+
+                ELSIF v_docs_en_esp > 0 THEN
+                    -- Caso: Especialidad con médicos pero sin cupos libres en el rango
+                    v_total_sin_disp := v_total_sin_disp + 1;
+
+                    v_obj_esp := JSON_OBJECT_T();
+                    v_obj_esp.put('id_especialidad', r_todas.id_especialidad);
+                    v_obj_esp.put('nombre_especialidad', r_todas.nombre_especialidad);
+                    v_obj_esp.put('tiene_profesionales', true);
+                    v_obj_esp.put('tipo', 'CON_PROFESIONALES_SIN_DISPONIBILIDAD');
+                    v_obj_esp.put('total_profesionales', v_docs_en_esp);
+                    v_obj_esp.put('profesionales', v_arr_doctores);
+                    v_arr_especialidades.append(v_obj_esp);
+                END IF;
+            END;
+        END LOOP;
+
+        v_res_out := JSON_OBJECT_T();
+        v_res_out.put('codigo', 0);
+        v_res_out.put('mensaje', 'Consulta de especialidades y profesionales sin disponibilidad completada exitosamente');
+        v_res_out.put('fecha_inicio', TO_CHAR(v_fecha_inicio, 'YYYY-MM-DD'));
+        v_res_out.put('fecha_fin', TO_CHAR(v_fecha_fin, 'YYYY-MM-DD'));
+        v_res_out.put('total_sin_disponibilidad', v_total_sin_disp);
+        v_res_out.put('total_especialidades_sin_medicos', v_total_esp_sin_medicos);
+        v_res_out.put('total_medicos_sin_cupos', v_total_med_sin_cupos);
+        v_res_out.put('especialidades', v_arr_especialidades);
+
+        p_json_salida := v_res_out.to_clob();
+
+        IF v_traza_activa AND v_id_traza_ejecucion IS NOT NULL THEN
+            uti_manejo_trazas_pkg.p_finalizar_traza(
+                p_id_ejecucion   => v_id_traza_ejecucion,
+                p_fecha_inicio   => v_fecha_inicio_traza,
+                p_json_salida    => p_json_salida,
+                p_grabar_payload => v_grabar_payloads_traza
+            );
+        END IF;
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            vro_error.tipo                := 'E';
+            vro_error.nombre_programa     := 'PKGLN_DIRECTORIO_PROFESIONALES';
+            vro_error.nombre_metodo       := 'p_consultar_sin_disponibilidad';
+            vro_error.parametros          := p_json_entrada;
+            vro_error.codigo_error        := TO_CHAR(SQLCODE);
+            vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+            vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
+            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.usuario             := NVL(TO_CHAR(v_id_usuario_ejecutor), USER);
+            vro_error.id_usuario_creacion := v_id_usuario_ejecutor;
+
+            uti_ge_excepciones_pkg.p_grabar_log(vro_error);
+
+            IF v_traza_activa AND v_id_traza_ejecucion IS NOT NULL THEN
+                uti_manejo_trazas_pkg.p_finalizar_traza_error(
+                    p_id_ejecucion  => v_id_traza_ejecucion,
+                    p_fecha_inicio  => v_fecha_inicio_traza,
+                    p_codigo_error  => SQLCODE,
+                    p_mensaje_error => SQLERRM
+                );
+            END IF;
+
+            v_res_err := JSON_OBJECT_T();
+            v_res_err.put('codigo', -20000);
+            v_res_err.put('error', -20000);
+            v_res_err.put('mensaje', 'Error al consultar profesionales sin disponibilidad: ' || vro_error.mensaje_error);
+            p_json_salida := v_res_err.to_clob();
+    END p_consultar_sin_disponibilidad;
+
 END pkgln_directorio_profesionales;
 /

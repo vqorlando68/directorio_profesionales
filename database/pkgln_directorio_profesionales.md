@@ -156,6 +156,29 @@ Orquesta la recuperación de la información detallada de un profesional médico
 
 ---
 
+## Método: p_consultar_sin_disponibilidad
+
+### 1. Descripción en Lenguaje Natural
+Orquesta la consulta y consolidación jerárquica de todos los profesionales habilitados en la plataforma que **NO cuentan con disponibilidad horaria (cero slots libres)** en el rango de fechas evaluado:
+- Extrae parámetros de fecha (`fecha_inicio`, `fecha_fin`), aseguramiento, convenio y modalidad.
+- Itera sobre el universo de profesionales habilitados evaluando su disponibilidad con el motor transaccional (`p_consultar_disponibilidad`).
+- Identifica a los médicos con 0 turnos/slots disponibles en el rango.
+- Agrupa los doctores sin disponibilidad por especialidad médica.
+- Identifica el motivo descriptivo (`Sin horarios programados en el rango` o `Horarios configurados (...) pero sin slots libres`).
+- Retorna un payload estructurado por especialidad con la lista de médicos, contacto y días de servicio para su visualización y exportación a Excel.
+
+### 2. Mapa de Objetos Invocados y Llamados
+| Orden | Nombre Exacto del Objeto Invocado | Capa / Familia | Tipo | Propósito de la Invocación | Condición / Momento |
+| :---: | :--- | :--- | :--- | :--- | :--- |
+| 1 | `uti_manejo_trazas_pkg.f_debe_trazar` | `uti_` | Función | Comprobar si el método tiene telemetría configurada | Al inicio |
+| 2 | `uti_manejo_trazas_pkg.p_iniciar_traza` | `uti_` | Procedimiento | Registrar apertura en tkr_traza_ejecucion | Si f_debe_trazar = TRUE |
+| 3 | `p_consultar_disponibilidad` | `pkgln_` | Procedimiento | Evaluar el motor de disponibilidad y slots del médico en el rango | Por cada médico habilitado |
+| 4 | `pkgcn_directorio_profesionales.f_dias_servicio_profesional` | `pkgcn_` | Función | Obtener los días configurados con horario | Para médicos con slots = 0 |
+| 5 | `uti_manejo_trazas_pkg.p_finalizar_traza` | `uti_` | Procedimiento | Registrar cierre exitoso de telemetría | Al completar |
+| 6 | `uti_ge_excepciones_pkg.p_grabar_log` | `uti_` | Procedimiento | Registrar log de excepción en tkr_errores | Bloque WHEN OTHERS |
+
+---
+
 ## 4. Esquemas y Payloads JSON de Ejemplo
 
 ### Payload JSON de Entrada (`p_consultar_directorio`):
@@ -210,4 +233,66 @@ Orquesta la recuperación de la información detallada de un profesional médico
   ]
 }
 ```
+
+## Método: p_consultar_sin_disponibilidad
+
+### Descripción Funcional
+Evalúa y consolida todas las especialidades y profesionales médicos activos en el sistema que **no cuentan con disponibilidad horaria** para un rango de fechas especificado (`fecha_inicio` a `fecha_fin`). 
+
+Contempla dos dimensiones de desabastecimiento:
+1. **Especialidades sin profesionales asignados:** Especialidades activas del catálogo (`tkr_especialidades`) que actualmente no cuentan con médicos habilitados registrados.
+2. **Especialidades con profesionales sin cupos:** Médicos que, teniendo horarios o especialidad asignada, no poseen ningún intervalo libre de cita (`total_slots_rango = 0`) para los criterios de aseguramiento, convenio y modalidad seleccionados.
+
+### Parámetros de Entrada (`p_json_entrada`)
+| Campo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `fecha_inicio` | VARCHAR2(10) | NO | Fecha inicial en formato ISO `YYYY-MM-DD`. Por defecto `TRUNC(SYSDATE)`. |
+| `fecha_fin` | VARCHAR2(10) | NO | Fecha final en formato ISO `YYYY-MM-DD`. Por defecto `fecha_inicio + 6`. |
+| `id_convenio` | NUMBER(12) | NO | Filtro opcional por aseguradora / convenio específico. |
+| `id_tipo_aseguramiento` | NUMBER(12) | NO | 1 = Voluntario (defecto), 2 = Obligatorio. |
+| `modalidad` | VARCHAR2(2) | NO | 'V' = Telemedicina (defecto), 'D' = Domiciliario. |
+| `id_especialidad` | NUMBER(12) | NO | Filtro opcional para consultar una sola especialidad. |
+
+### Payload JSON de Salida (`p_json_salida`)
+```json
+{
+  "codigo": 0,
+  "mensaje": "Consulta de especialidades y profesionales sin disponibilidad completada exitosamente",
+  "fecha_inicio": "2026-10-27",
+  "fecha_fin": "2026-11-02",
+  "total_sin_disponibilidad": 64,
+  "total_especialidades_sin_medicos": 63,
+  "total_medicos_sin_cupos": 2,
+  "especialidades": [
+    {
+      "id_especialidad": 62,
+      "nombre_especialidad": "Alergología",
+      "tiene_profesionales": false,
+      "tipo": "SIN_PROFESIONALES",
+      "total_profesionales": 0,
+      "profesionales": []
+    },
+    {
+      "id_especialidad": 30,
+      "nombre_especialidad": "Pediatría",
+      "tiene_profesionales": true,
+      "tipo": "CON_PROFESIONALES_SIN_DISPONIBILIDAD",
+      "total_profesionales": 2,
+      "profesionales": [
+        {
+          "id": 47,
+          "id_usuario": 47,
+          "fullName": "Carlos Rojas",
+          "nombre_completo": "Carlos Rojas",
+          "correo": "bancar05@123gmail.com",
+          "telefono": "3168226095",
+          "days_of_service": "Sin horarios",
+          "motivo": "Sin horarios configurados en el rango de fechas"
+        }
+      ]
+    }
+  ]
+}
+```
+
 

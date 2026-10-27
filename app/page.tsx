@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Search,
   Calendar,
@@ -10,6 +11,8 @@ import {
   Stethoscope,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   X,
   AlertCircle,
   Copy,
@@ -19,8 +22,46 @@ import {
   PhoneCall,
   Star,
   Award,
-  Sparkles
+  Sparkles,
+  Layers,
+  UserX,
+  CalendarX,
+  FileSpreadsheet,
+  Download,
+  Users,
+  Mail,
+  Phone
 } from 'lucide-react';
+
+
+interface ProfesionalSinDisp {
+  id_usuario: number;
+  nombre_completo: string;
+  correo?: string;
+  telefono?: string;
+  days_of_service?: string[] | string | null;
+  motivo?: string;
+}
+
+interface EspecialidadSinDisp {
+  id_especialidad: number;
+  nombre_especialidad: string;
+  tiene_profesionales: boolean;
+  tipo: 'SIN_PROFESIONALES' | 'CON_PROFESIONALES_SIN_DISPONIBILIDAD';
+  total_profesionales: number;
+  profesionales: ProfesionalSinDisp[];
+}
+
+interface RespuestaSinDisp {
+  codigo: number;
+  mensaje: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  total_sin_disponibilidad: number;
+  total_especialidades_sin_medicos?: number;
+  total_medicos_sin_cupos?: number;
+  especialidades: EspecialidadSinDisp[];
+}
 
 interface SpecialtyItem {
   id: number;
@@ -149,6 +190,15 @@ export default function DirectorioPage() {
   } | null>(null);
   const [cargandoSlots, setCargandoSlots] = useState(false);
   const [slotSeleccionado, setSlotSeleccionado] = useState<SlotItem | null>(null);
+
+
+  // Modal de Profesionales Sin Disponibilidad
+  const [mostrarModalSinDisp, setMostrarModalSinDisp] = useState(false);
+  const [cargandoSinDisp, setCargandoSinDisp] = useState(false);
+  const [datosSinDisp, setDatosSinDisp] = useState<RespuestaSinDisp | null>(null);
+  const [busquedaSinDisp, setBusquedaSinDisp] = useState('');
+  const [filtroTipoSinDisp, setFiltroTipoSinDisp] = useState<'TODAS' | 'SIN_MEDICOS' | 'CON_MEDICOS'>('TODAS');
+  const [especialidadesContraidas, setEspecialidadesContraidas] = useState<Set<number>>(new Set());
 
   // Modal de depuración PL/SQL (Ctrl + Alt + D)
   const [mostrarModalDebug, setMostrarModalDebug] = useState(false);
@@ -454,6 +504,179 @@ export default function DirectorioPage() {
     }
   }
 
+
+
+  // Apertura y consulta de profesionales y especialidades sin disponibilidad
+  const abrirModalSinDisponibilidad = async () => {
+    setMostrarModalSinDisp(true);
+    setCargandoSinDisp(true);
+    setBusquedaSinDisp('');
+    setFiltroTipoSinDisp('TODAS');
+    try {
+      const params = new URLSearchParams({
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+        id_convenio: idConvenio ? String(idConvenio) : '',
+        id_tipo_aseguramiento: String(idTipoAseguramiento),
+        modalidad: modalidad || 'V'
+      });
+      const res = await fetch(`/api/sin-disponibilidad?${params.toString()}`);
+      const data: any = await res.json();
+      setEspecialidadesContraidas(new Set());
+
+      setDatosSinDisp({
+        codigo: data?.codigo ?? 0,
+        mensaje: data?.mensaje ?? '',
+        fecha_inicio: data?.fecha_inicio ?? fechaInicio,
+        fecha_fin: data?.fecha_fin ?? fechaFin,
+        total_sin_disponibilidad: data?.total_sin_disponibilidad ?? (data?.especialidades?.length || 0),
+        total_especialidades_sin_medicos: data?.total_especialidades_sin_medicos ?? 0,
+        total_medicos_sin_cupos: data?.total_medicos_sin_cupos ?? 0,
+        especialidades: Array.isArray(data?.especialidades) ? data.especialidades : []
+      });
+    } catch (err) {
+      console.error('Error al consultar especialidades sin disponibilidad:', err);
+      setDatosSinDisp({
+        codigo: -1,
+        mensaje: 'Error de conexión con el servidor',
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+        total_sin_disponibilidad: 0,
+        total_especialidades_sin_medicos: 0,
+        total_medicos_sin_cupos: 0,
+        especialidades: []
+      });
+    } finally {
+      setCargandoSinDisp(false);
+    }
+  };
+
+  // Exportar listado de sin disponibilidad a formato Excel (.xlsx)
+  const exportarExcelSinDisponibilidad = () => {
+    if (!datosSinDisp || !datosSinDisp.especialidades || datosSinDisp.especialidades.length === 0) {
+      return;
+    }
+
+    const filas: any[] = [];
+    datosSinDisp.especialidades.forEach((esp) => {
+      if (!esp.tiene_profesionales || esp.profesionales.length === 0) {
+        filas.push({
+          'Especialidad': esp.nombre_especialidad,
+          'ID Médico': '-',
+          'Nombre del Profesional': 'Sin médicos asignados a la especialidad',
+          'Días de Atención Habitual': 'N/A',
+          'Correo Electrónico': 'N/A',
+          'Teléfono': 'N/A',
+          'Rango Evaluado': `${datosSinDisp.fecha_inicio} al ${datosSinDisp.fecha_fin}`,
+          'Estado Disponibilidad': 'Especialidad sin profesionales registrados'
+        });
+      } else {
+        esp.profesionales.forEach((doc) => {
+          let diasTexto = 'Sin horarios';
+          if (Array.isArray(doc.days_of_service)) {
+            diasTexto = doc.days_of_service.length > 0 ? doc.days_of_service.join(', ') : 'Sin horarios';
+          } else if (typeof doc.days_of_service === 'string') {
+            diasTexto = doc.days_of_service || 'Sin horarios';
+          }
+
+          filas.push({
+            'Especialidad': esp.nombre_especialidad,
+            'ID Médico': doc.id_usuario,
+            'Nombre del Profesional': doc.nombre_completo,
+            'Días de Atención Habitual': diasTexto,
+            'Correo Electrónico': doc.correo || 'No registrado',
+            'Teléfono': doc.telefono || 'No registrado',
+            'Rango Evaluado': `${datosSinDisp.fecha_inicio} al ${datosSinDisp.fecha_fin}`,
+            'Estado Disponibilidad': 'Sin disponibilidad (0 cupos en el rango)'
+          });
+        });
+      }
+    });
+
+    const ws = XLSX.utils.json_to_sheet(filas);
+    ws['!cols'] = [
+      { wch: 30 },
+      { wch: 12 },
+      { wch: 38 },
+      { wch: 26 },
+      { wch: 30 },
+      { wch: 18 },
+      { wch: 26 },
+      { wch: 35 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sin Disponibilidad');
+    const nombreArchivo = `Reporte_Sin_Disponibilidad_${datosSinDisp.fecha_inicio}_al_${datosSinDisp.fecha_fin}.xlsx`;
+    XLSX.writeFile(wb, nombreArchivo);
+  };
+
+
+  // Control de expansión / contracción de especialidades
+  const toggleEspecialidad = (idEsp: number) => {
+    setEspecialidadesContraidas((prev) => {
+      const next = new Set(prev);
+      if (next.has(idEsp)) {
+        next.delete(idEsp);
+      } else {
+        next.add(idEsp);
+      }
+      return next;
+    });
+  };
+
+  const expandirTodas = () => {
+    setEspecialidadesContraidas(new Set());
+  };
+
+  const contraerTodas = () => {
+    const todosLosIds = new Set<number>();
+    (datosSinDisp?.especialidades || []).forEach((esp) => {
+      todosLosIds.add(esp.id_especialidad);
+    });
+    setEspecialidadesContraidas(todosLosIds);
+  };
+
+  // Filtrado reactivo dentro del modal por pestaña y búsqueda
+  const especialidadesFiltradasSinDisp = useMemo(() => {
+    if (!datosSinDisp?.especialidades) return [];
+    let lista = datosSinDisp.especialidades;
+
+    // Filtro por pestaña
+    if (filtroTipoSinDisp === 'SIN_MEDICOS') {
+      lista = lista.filter((e) => !e.tiene_profesionales || e.profesionales.length === 0);
+    } else if (filtroTipoSinDisp === 'CON_MEDICOS') {
+      lista = lista.filter((e) => e.tiene_profesionales && e.profesionales.length > 0);
+    }
+
+    // Filtro por texto de búsqueda
+    const q = busquedaSinDisp.trim().toLowerCase();
+    if (!q) return lista;
+
+    return lista
+      .map((esp) => {
+        const coincideEsp = esp.nombre_especialidad.toLowerCase().includes(q);
+        if (coincideEsp) return esp;
+
+        if (esp.profesionales && esp.profesionales.length > 0) {
+          const docs = esp.profesionales.filter(
+            (doc) =>
+              doc.nombre_completo.toLowerCase().includes(q) ||
+              (doc.correo && doc.correo.toLowerCase().includes(q)) ||
+              (doc.telefono && doc.telefono.includes(q))
+          );
+          if (docs.length > 0) {
+            return {
+              ...esp,
+              profesionales: docs,
+              total_profesionales: docs.length
+            };
+          }
+        }
+        return null;
+      })
+      .filter(Boolean) as EspecialidadSinDisp[];
+  }, [datosSinDisp, busquedaSinDisp, filtroTipoSinDisp]);
 
   // Generar bloque anónimo PL/SQL según el contexto activo
   const payloadActual = useMemo(() => {
@@ -945,7 +1168,7 @@ END;
         </section>
 
         {/* Encabezado de Resultados */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             {cargando ? (
               'Consultando profesionales...'
@@ -955,9 +1178,22 @@ END;
               </>
             )}
           </p>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Página {pagina} de {totalPaginas}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {/* Botón Sin Disponibilidad */}
+            <button
+              type="button"
+              className="btn-sin-disp"
+              onClick={abrirModalSinDisponibilidad}
+              title="Ver profesionales que no tienen disponibilidad en el rango seleccionado"
+            >
+              <CalendarX size={16} />
+              <span>Sin Disponibilidad</span>
+            </button>
+
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Página {pagina} de {totalPaginas}
+            </span>
+          </div>
         </div>
 
         {/* Cuadrícula de Profesionales */}
@@ -1561,6 +1797,308 @@ END;
           </div>
         </div>
       )}
-    </div>
+
+      {/* Modal: Profesionales Sin Disponibilidad */}
+      {mostrarModalSinDisp && (
+        <div className="modal-overlay" onClick={() => setMostrarModalSinDisp(false)}>
+          <div
+            className="modal-sin-disp-container"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: '#fff1f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#e11d48', border: '1px solid #fecdd3' }}>
+                  <CalendarX size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
+                      Especialidades y Profesionales Sin Disponibilidad
+                    </h2>
+                    {datosSinDisp && !cargandoSinDisp && (
+                      <span className="sin-disp-header-badge">
+                        <Layers size={13} />
+                        {datosSinDisp.total_sin_disponibilidad} especialidades
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                    Rango evaluado: <strong>{fechaInicio}</strong> al <strong>{fechaFin}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="close-btn"
+                onClick={() => setMostrarModalSinDisp(false)}
+                title="Cerrar modal"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Toolbar con buscador, pestañas de filtro y exportación */}
+            <div className="sin-disp-toolbar">
+              <div className="sin-disp-search-box">
+                <Search size={15} style={{ position: 'absolute', left: 12, top: 11, color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ height: 38, paddingLeft: 36, fontSize: '0.85rem' }}
+                  placeholder="Buscar especialidad o médico..."
+                  value={busquedaSinDisp}
+                  onChange={(e) => setBusquedaSinDisp(e.target.value)}
+                />
+              </div>
+
+              {/* Pestañas de filtrado rápido */}
+              <div className="sin-disp-tabs-filter">
+                <button
+                  type="button"
+                  className={`sin-disp-tab-btn ${filtroTipoSinDisp === 'TODAS' ? 'active' : ''}`}
+                  onClick={() => setFiltroTipoSinDisp('TODAS')}
+                >
+                  Todas ({datosSinDisp?.total_sin_disponibilidad || 0})
+                </button>
+                <button
+                  type="button"
+                  className={`sin-disp-tab-btn ${filtroTipoSinDisp === 'SIN_MEDICOS' ? 'active' : ''}`}
+                  onClick={() => setFiltroTipoSinDisp('SIN_MEDICOS')}
+                >
+                  Sin médicos ({datosSinDisp?.total_especialidades_sin_medicos || 0})
+                </button>
+                <button
+                  type="button"
+                  className={`sin-disp-tab-btn ${filtroTipoSinDisp === 'CON_MEDICOS' ? 'active' : ''}`}
+                  onClick={() => setFiltroTipoSinDisp('CON_MEDICOS')}
+                >
+                  Con médicos sin cupos ({((datosSinDisp?.total_sin_disponibilidad || 0) - (datosSinDisp?.total_especialidades_sin_medicos || 0))})
+                </button>
+              </div>
+
+              {/* Botón Exportar a Excel */}
+              <button
+                type="button"
+                className="btn-export-excel"
+                onClick={exportarExcelSinDisponibilidad}
+                disabled={cargandoSinDisp || !datosSinDisp || datosSinDisp.total_sin_disponibilidad === 0}
+                title="Descargar listado completo en formato Excel (.xlsx)"
+              >
+                <FileSpreadsheet size={16} />
+                <span>Exportar a Excel</span>
+              </button>
+            </div>
+
+            {/* Contenido / Listado por Especialidad */}
+            <div className="sin-disp-content-scroll">
+              {cargandoSinDisp ? (
+                <div style={{ textAlign: 'center', padding: '60px 0' }}>
+                  <div className="spinner" style={{ margin: '0 auto 14px auto' }} />
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 500 }}>
+                    Consultando todas las especialidades y evaluando disponibilidad en el rango...
+                  </p>
+                </div>
+              ) : !datosSinDisp?.especialidades || datosSinDisp.especialidades.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '50px 0', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                  <Check size={36} style={{ color: '#059669', margin: '0 auto 10px auto' }} />
+                  <h4 style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a' }}>
+                    ¡No hay especialidades sin disponibilidad!
+                  </h4>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 4 }}>
+                    Todas las especialidades cuentan con médicos con cupos libres para el rango.
+                  </p>
+                </div>
+              ) : especialidadesFiltradasSinDisp.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '50px 0' }}>
+                  <AlertCircle size={32} style={{ color: 'var(--text-muted)', margin: '0 auto 8px auto' }} />
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+                    No hay especialidades que coincidan con &ldquo;{busquedaSinDisp}&rdquo; en esta pestaña.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Barra de control para acordeón si hay especialidades con médicos */}
+                  {especialidadesFiltradasSinDisp.some(e => e.tiene_profesionales && e.profesionales?.length > 0) && (
+                    <div className="sin-disp-expand-controls">
+                      <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>
+                        Especialidades con médicos ({especialidadesFiltradasSinDisp.filter(e => e.tiene_profesionales && e.profesionales?.length > 0).length}):
+                      </span>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          className="btn-link-action"
+                          onClick={expandirTodas}
+                        >
+                          Expandir todas
+                        </button>
+                        <span style={{ color: '#cbd5e1' }}>|</span>
+                        <button
+                          type="button"
+                          className="btn-link-action"
+                          onClick={contraerTodas}
+                        >
+                          Contraer todas
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 1. Especialidades CON MÉDICOS SIN CUPOS (Acordeón interactivo) */}
+                  {especialidadesFiltradasSinDisp
+                    .filter((e) => e.tiene_profesionales && e.profesionales && e.profesionales.length > 0)
+                    .map((esp) => {
+                      const estaExpandida = !especialidadesContraidas.has(esp.id_especialidad);
+
+                      return (
+                        <div key={esp.id_especialidad} className="sin-disp-spec-card">
+                          {/* Header Acordeón Clickeable */}
+                          <div
+                            className="sin-disp-spec-header accordion-header"
+                            onClick={() => toggleEspecialidad(esp.id_especialidad)}
+                            title="Haga clic para expandir o contraer esta especialidad"
+                          >
+                            <div className="sin-disp-spec-title">
+                              <Stethoscope size={18} style={{ color: '#0284c7' }} />
+                              <span>{esp.nombre_especialidad}</span>
+                            </div>
+
+                            <div className="sin-disp-spec-right-actions">
+                              <span className="sin-disp-spec-count">
+                                {esp.profesionales.length} {esp.profesionales.length === 1 ? 'médico sin cupos' : 'médicos sin cupos'}
+                              </span>
+                              <div className={`accordion-arrow ${estaExpandida ? 'rotated' : ''}`}>
+                                <ChevronDown size={18} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Lista de Médicos (Se muestra solo si está expandida) */}
+                          {estaExpandida && (
+                            <div className="sin-disp-doc-list">
+                              {esp.profesionales.map((doc) => {
+                                const iniciales = (doc.nombre_completo || 'Dr')
+                                  .split(' ')
+                                  .map((n) => n[0])
+                                  .slice(0, 2)
+                                  .join('')
+                                  .toUpperCase();
+
+                                const dias = (() => {
+                                  const raw = doc.days_of_service;
+                                  if (!raw) return [];
+                                  if (Array.isArray(raw)) return raw;
+                                  if (typeof raw === 'string') {
+                                    const trimmed = raw.trim();
+                                    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                                      try {
+                                        const arr = JSON.parse(trimmed);
+                                        if (Array.isArray(arr)) return arr;
+                                      } catch {}
+                                    }
+                                    return trimmed.split(',').map((d) => d.trim()).filter(Boolean);
+                                  }
+                                  return [];
+                                })();
+
+                                return (
+                                  <div key={doc.id_usuario} className="sin-disp-doc-row">
+                                    <div className="sin-disp-doc-avatar">
+                                      {iniciales}
+                                    </div>
+                                    <div className="sin-disp-doc-info">
+                                      <div className="sin-disp-doc-name">
+                                        <span>{doc.nombre_completo}</span>
+                                        <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 400 }}>
+                                          (ID: {doc.id_usuario})
+                                        </span>
+                                      </div>
+
+                                      {/* Días de atención */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '3px 0', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                                          Días de atención habitual:
+                                        </span>
+                                        {dias.length > 0 ? (
+                                          dias.map((d, idx) => (
+                                            <span key={idx} className="badge-day-pill" style={{ height: 18, minWidth: 22, fontSize: '0.68rem', padding: '0 4px' }}>
+                                              {d}
+                                            </span>
+                                          ))
+                                        ) : (
+                                          <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                            Sin horarios configurados
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Contacto */}
+                                      <div className="sin-disp-doc-contact">
+                                        {doc.correo && (
+                                          <span className="sin-disp-doc-contact-item">
+                                            <Mail size={12} />
+                                            {doc.correo}
+                                          </span>
+                                        )}
+                                        {doc.telefono && (
+                                          <span className="sin-disp-doc-contact-item">
+                                            <Phone size={12} />
+                                            {doc.telefono}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <span className="sin-disp-doc-badge-status">
+                                        <CalendarX size={12} />
+                                        0 cupos disponibles
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                  {/* 2. Especialidades SIN MÉDICOS (Cuadrícula limpia y compacta, sin rayas) */}
+                  {especialidadesFiltradasSinDisp.some(e => !e.tiene_profesionales || !e.profesionales || e.profesionales.length === 0) && (
+                    <div style={{ marginTop: 10, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <UserX size={16} style={{ color: '#64748b' }} />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+                          Especialidades sin profesionales asignados ({especialidadesFiltradasSinDisp.filter(e => !e.tiene_profesionales || !e.profesionales || e.profesionales.length === 0).length}):
+                        </span>
+                      </div>
+
+                      <div className="sin-disp-grid-empty">
+                        {especialidadesFiltradasSinDisp
+                          .filter((e) => !e.tiene_profesionales || !e.profesionales || e.profesionales.length === 0)
+                          .map((esp) => (
+                            <div key={esp.id_especialidad} className="sin-disp-empty-card">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Stethoscope size={15} style={{ color: '#94a3b8', flexShrink: 0 }} />
+                                <span style={{ fontSize: '0.84rem', color: '#1e293b', fontWeight: 600 }}>
+                                  {esp.nombre_especialidad}
+                                </span>
+                              </div>
+                              <span className="sin-disp-spec-count empty-badge" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>
+                                Sin médicos
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   );
 }
