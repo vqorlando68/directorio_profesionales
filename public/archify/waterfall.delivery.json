@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "35c0fb58-6304-4acb-ae27-cbb04ca31687",
+  "status": "current",
+  "command": "deliver",
+  "type": "waterfall",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\waterfall.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\waterfall.html",
+  "specification": {
+    "sha256": "4733e39178ebb04ff2df1825149745eadc5e420c05c2d9ef8b507a62e0fe75d7",
+    "bytes": 1373
+  },
+  "artifact": {
+    "sha256": "4a528bafc5de379ab97132f8c3d863917e254309f3f5e3119d646dc80002ab47",
+    "bytes": 837690
+  }
+}

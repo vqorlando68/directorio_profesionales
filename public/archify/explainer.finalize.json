@@ -1,0 +1,377 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "explainer",
+  "quality": "showcase",
+  "startedAt": "2026-10-29T21:57:43.054Z",
+  "specification": {
+    "path": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\explainer.archify.md",
+    "sha256": "cb3fff65ce1f95177c076e505b7f0f6f02de405c125ebc32782b13e3ba8a08fe",
+    "bytes": 3968
+  },
+  "artifact": {
+    "path": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.html",
+    "sha256": "72b3afa119e8ac255130b92648bd62b4cd9aa2b2b24b98ff34f0045fd804190d",
+    "bytes": 709651
+  },
+  "stages": {
+    "browser-check": {
+      "status": "not-run",
+      "execution": "not-requested"
+    },
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "C:\\programas\\nodejs\\node.exe",
+        "C:\\Repositorios\\CORE_TEKER - copia\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "explainer",
+        "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\explainer.archify.md",
+        "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales",
+        "--writing",
+        "off",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "cb3fff65ce1f95177c076e505b7f0f6f02de405c125ebc32782b13e3ba8a08fe",
+          "bytes": 3968
+        },
+        "validation": {
+          "checksPassed": 4,
+          "checkCount": 4,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 2873,
+      "command": [
+        "C:\\programas\\nodejs\\node.exe",
+        "C:\\Repositorios\\CORE_TEKER - copia\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "explainer",
+        "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\explainer.archify.md",
+        "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales",
+        "--writing",
+        "off",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "0bca68d4-db8f-4555-bf19-ad33a0898e7b",
+        "ok": true,
+        "command": "deliver",
+        "type": "explainer",
+        "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\explainer.archify.md",
+        "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.html",
+        "explainer": {
+          "preparedSha256": "466faaf3e9ad6276f891162743bf567c81b669005c5eb62c2c26824f088fc3e3",
+          "dependencies": [
+            {
+              "kind": "repository",
+              "id": "pkgcn_hor",
+              "path": "database/pkgcn_horarios.pkb",
+              "revision": "bb4180034ddc68f50feef4274b6a278db06390d4",
+              "sha256": "b567de659124f59bbf6fba304c3a8e54b54c40cb693087a0e7caa548e171d1e8",
+              "bytes": 22615
+            },
+            {
+              "kind": "repository",
+              "id": "pkgln_hor",
+              "path": "database/pkgln_horarios.pkb",
+              "revision": "bb4180034ddc68f50feef4274b6a278db06390d4",
+              "sha256": "bbf682254a10a57eadcc69bb0deb57b8733c63ed741541dfd7ada795ab0ae818",
+              "bytes": 74402
+            },
+            {
+              "kind": "repository",
+              "id": "job_sql",
+              "path": "database/job_refrescar_agenda.sql",
+              "revision": "bb4180034ddc68f50feef4274b6a278db06390d4",
+              "sha256": "ce631435070a8ab3ef49a0105c7f65944ceb711f12d754ffd2fa9448653cb83d",
+              "bytes": 1656
+            },
+            {
+              "kind": "repository",
+              "id": "pkgln_dir",
+              "path": "database/pkgtkr_refrescar_agenda_dao.pkb",
+              "revision": "bb4180034ddc68f50feef4274b6a278db06390d4",
+              "sha256": "bb0f6d90c7dc087d466b982dbf1b540a7c7e479971dac2b5bdb8d487fb5086ad",
+              "bytes": 8764
+            },
+            {
+              "kind": "diagram-spec",
+              "id": "flujo-refresco",
+              "inline": true,
+              "sha256": "fdb25cb552e3ea47ab83ec189ce104e49e2bafb4cc148a7cf8ee4ed2a311b155",
+              "bytes": 1215
+            }
+          ]
+        },
+        "specification": {
+          "sha256": "cb3fff65ce1f95177c076e505b7f0f6f02de405c125ebc32782b13e3ba8a08fe",
+          "bytes": 3968
+        },
+        "artifact": {
+          "sha256": "72b3afa119e8ac255130b92648bd62b4cd9aa2b2b24b98ff34f0045fd804190d",
+          "bytes": 709651
+        },
+        "validation": {
+          "checksPassed": 4,
+          "checkCount": 4,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 1016,
+      "command": [
+        "C:\\programas\\nodejs\\node.exe",
+        "C:\\Repositorios\\CORE_TEKER - copia\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "check",
+        "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.html",
+        "family": "explainer",
+        "artifact": {
+          "sha256": "72b3afa119e8ac255130b92648bd62b4cd9aa2b2b24b98ff34f0045fd804190d",
+          "bytes": 709651
+        },
+        "checks": [
+          {
+            "name": "explainer_structure",
+            "ok": true,
+            "details": [
+              "43 unique DOM IDs"
+            ]
+          },
+          {
+            "name": "explainer_payload_identity",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "explainer_dependencies",
+            "ok": true,
+            "details": [
+              "5 frozen dependencies"
+            ]
+          },
+          {
+            "name": "explainer_native_diagrams",
+            "ok": true,
+            "details": [
+              "flujo-refresco: pass"
+            ]
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "issues": [],
+          "nativeDiagrams": [
+            {
+              "id": "flujo-refresco",
+              "receipt": {
+                "ok": true,
+                "file": "C:\\Users\\ORLAND~1\\AppData\\Local\\Temp\\archify-explainer-check-FTaj7y\\child.html",
+                "artifact": {
+                  "sha256": "5fe26242acd63cd673660fd28bc7dafba774a8b14a8a0b7f402f3cfca346e1fd",
+                  "bytes": 835707
+                },
+                "checks": [
+                  {
+                    "name": "single_svg",
+                    "ok": true,
+                    "details": [
+                      "found 1 <svg> block(s)"
+                    ]
+                  },
+                  {
+                    "name": "finite_svg",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "orthogonal_arrows",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "label_route_clearance",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "relationship_crossings",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "relationship_corridors",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "container_border_runs",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "route_rhythm",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "legend_clearance",
+                    "ok": true,
+                    "details": []
+                  }
+                ],
+                "composition": {
+                  "schemaVersion": 1,
+                  "profile": "showcase",
+                  "status": "pass",
+                  "summary": {
+                    "errors": 0,
+                    "warnings": 0
+                  },
+                  "metrics": {
+                    "properCrossings": 0,
+                    "resolvedCrossovers": 0,
+                    "ambiguousCorridors": 0,
+                    "arrowheadCollisions": 0,
+                    "containerBorderRuns": 0,
+                    "labelRouteClearanceIssues": 0,
+                    "labelCanvasOverflowIssues": 0,
+                    "minLabelRouteClearance": 148.1,
+                    "desktopReadabilityIssues": 0,
+                    "viewportHeightIssues": 0,
+                    "minProjectedNodeTextPx": 6.95977549111319,
+                    "maxBends": 0,
+                    "routesOverSuggestedBends": 0,
+                    "maxStretch": 1,
+                    "routesOverSuggestedStretch": 0,
+                    "minSegmentPx": 38,
+                    "minInteriorSegmentPx": null,
+                    "shortSegmentCount": 0,
+                    "shortEndpointSegmentCount": 0,
+                    "shortInteriorSegmentCount": 0,
+                    "microSegmentCount": 0
+                  },
+                  "suggestedLimits": {
+                    "bendsPerRelationship": 2,
+                    "stretch": 1.35,
+                    "segmentPx": 16,
+                    "microSegmentPx": 8
+                  },
+                  "routeReview": {
+                    "crossings": [],
+                    "detours": []
+                  },
+                  "leadingSpace": {
+                    "measured": false,
+                    "reviewSuggested": false
+                  },
+                  "desktopReadability": {
+                    "budgetBasis": "legacy-930",
+                    "readerContract": "declared-wide-v1",
+                    "availableDiagramWidth": 930,
+                    "actualBudgetPx": 930,
+                    "limit": "legacy",
+                    "requestedTargetPx": null,
+                    "requestedTargetMet": null,
+                    "hardFloorPx": 6,
+                    "hardFloorMet": true,
+                    "minimumOwner": {
+                      "kind": "edge",
+                      "id": "act-to-sinc-1",
+                      "from": "act",
+                      "to": "sinc"
+                    },
+                    "minimumSourceTextPx": 8,
+                    "minimumProjectedTextPx": 6.95977549111319,
+                    "semanticTextCount": 9
+                  },
+                  "issues": []
+                }
+              }
+            }
+          ]
+        },
+        "diagnostics": [],
+        "provenance": "current",
+        "deliveryReceiptId": "0bca68d4-db8f-4555-bf19-ad33a0898e7b"
+      }
+    }
+  },
+  "browserCheck": {
+    "requested": false,
+    "ran": false
+  },
+  "diagnostics": [],
+  "evidence": {
+    "receipt": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.finalize.json",
+    "summaryReceipt": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "finishedAt": "2026-10-29T21:57:48.316Z",
+  "durationMs": 5261,
+  "update": {
+    "status": "unavailable",
+    "installedVersion": null,
+    "availableVersion": null,
+    "releaseNotes": null,
+    "checkedAt": null,
+    "source": null,
+    "noticeRequired": false,
+    "noticeText": null,
+    "reason": "timeout"
+  }
+}

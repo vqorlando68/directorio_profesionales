@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ee9ccbab-d6f6-473a-b8cd-7742ce7f1522",
+  "status": "current",
+  "command": "deliver",
+  "type": "class",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\class.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\class.html",
+  "specification": {
+    "sha256": "6e5e4bc8be04f665cc5730399f7350474d8387a7bf694fe4377e33dcf045bd9f",
+    "bytes": 4092
+  },
+  "artifact": {
+    "sha256": "26c2d1ab12d2612066be4fbb946d94be828f12d339c59742af4ba6a493633143",
+    "bytes": 852122
+  }
+}

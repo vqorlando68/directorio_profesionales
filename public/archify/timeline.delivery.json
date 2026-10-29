@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "885f0d2e-0b9a-499f-abc8-093eaa5c1d8a",
+  "status": "current",
+  "command": "deliver",
+  "type": "timeline",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\timeline.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\timeline.html",
+  "specification": {
+    "sha256": "3c46916308cee8cd59d7c5e55ef4e7ca9bba0c6749e1cb99b653c7c0432c6bc1",
+    "bytes": 1906
+  },
+  "artifact": {
+    "sha256": "54715f23d998181c3c9b81e5cc677425bf1d73a1ab05603c3378d9f8f7c40af3",
+    "bytes": 840061
+  }
+}

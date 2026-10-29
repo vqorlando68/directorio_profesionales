@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "7801bd36-ca62-46fd-8cdd-d19f1e5fd25d",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\architecture.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\architecture.html",
+  "specification": {
+    "sha256": "47f48cdee4b04b53c27d09b7e8fd8fbed3e987b2295fd04d20b58dd034633714",
+    "bytes": 3528
+  },
+  "artifact": {
+    "sha256": "456fbcd066c8453d150cd5b58ed5d75ad92895d4fd3f1ebb7207023fb3df78d1",
+    "bytes": 850488
+  }
+}

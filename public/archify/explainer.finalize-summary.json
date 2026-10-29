@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "explainer",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\explainer.archify.md",
+    "sha256": "cb3fff65ce1f95177c076e505b7f0f6f02de405c125ebc32782b13e3ba8a08fe",
+    "bytes": 3968
+  },
+  "artifact": {
+    "path": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.html",
+    "sha256": "72b3afa119e8ac255130b92648bd62b4cd9aa2b2b24b98ff34f0045fd804190d",
+    "bytes": 709651
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "not-run"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.finalize.json",
+    "summaryReceipt": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\explainer.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 5261,
+  "browserCheck": {
+    "requested": false,
+    "ran": false
+  }
+}

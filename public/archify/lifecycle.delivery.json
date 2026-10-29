@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "41295d3d-877b-4ef0-a135-a1fc62a6be94",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\lifecycle.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\lifecycle.html",
+  "specification": {
+    "sha256": "8a42a9d797176b4e1672b963f2ff82742dd6ebdacc1b57b95e1fba90b8fa348c",
+    "bytes": 2439
+  },
+  "artifact": {
+    "sha256": "abf83b9ab97fad19e4495cf8c812f6a9f68c03962ded41fe7dcead2bd94eb759",
+    "bytes": 841487
+  }
+}

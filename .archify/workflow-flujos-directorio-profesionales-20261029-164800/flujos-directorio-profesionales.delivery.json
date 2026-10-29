@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "da01436a-7576-43d7-a429-1ee0aba9bfee",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\directorio-profesionales\\.archify\\workflow-flujos-directorio-profesionales-20261029-164800\\candidate.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\directorio-profesionales\\.archify\\workflow-flujos-directorio-profesionales-20261029-164800\\flujos-directorio-profesionales.html",
+  "specification": {
+    "sha256": "83d4f5f8db1ac9b5df45616e7f012f9eaa21566a12f597531197432dc086bddb",
+    "bytes": 8154
+  },
+  "artifact": {
+    "sha256": "0439ff466573250b5fea426c4d87db678de9037cccc2d40ab5c2d268e76ec302",
+    "bytes": 862707
+  }
+}

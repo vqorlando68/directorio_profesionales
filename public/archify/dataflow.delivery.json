@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "bec97da4-418c-447d-a260-c06a738f39e2",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\dataflow.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\dataflow.html",
+  "specification": {
+    "sha256": "335318c9f2e60b6d60c636b88f30b136e23f9dbda2fd46e81c07877da5be7503",
+    "bytes": 2952
+  },
+  "artifact": {
+    "sha256": "775cd94895ec8a2f18805c33413faf6dc2f491c9b4c77a30e2d43437e7fd8444",
+    "bytes": 840673
+  }
+}

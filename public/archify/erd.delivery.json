@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "44de2eea-c38f-4b21-a140-243fd5f1e7ae",
+  "status": "current",
+  "command": "deliver",
+  "type": "erd",
+  "input": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\.archify\\all-20261029\\erd.json",
+  "output": "C:\\Repositorios\\CORE_TEKER - copia\\horario-profesionales\\public\\archify\\erd.html",
+  "specification": {
+    "sha256": "9965947b275871d79470557778df8ca5bd966b98d852183bbd78aced47f64d1a",
+    "bytes": 4863
+  },
+  "artifact": {
+    "sha256": "8e03cc4025083d9e0613eba620e87533ef02c2eb2c2630182d9d56584c5b1343",
+    "bytes": 861386
+  }
+}

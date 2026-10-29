@@ -1,0 +1,221 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Flujo de Directorio de Profesionales y Cálculo de Disponibilidad (PKGLN_DIRECTORIO_PROFESIONALES)",
+    "locale": "es",
+    "quality_profile": "showcase",
+    "output": "directorio-profesionales/.archify/workflow-flujos-directorio-profesionales-20261029-164800/flujos-directorio-profesionales.html",
+    "repository": {
+      "url": "https://github.com/vqorlando68/directorio_profesionales.git",
+      "revision": "9c8613e8d2c3902f1abd86380b80aab5d32b3cd2"
+    }
+  },
+  "lanes": [
+    { "id": "api_nextjs", "label": "API Routes Next.js" },
+    { "id": "orquestador", "label": "Orquestador (PKGLN_DIRECTORIO)" },
+    { "id": "acceso_datos", "label": "Capas PKGCN_ y PKGCA_" },
+    { "id": "bloqueos", "label": "Reglas de Bloqueo Horario", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "busqueda", "label": "Búsqueda Directorio", "fromCol": 0, "toCol": 1 },
+    { "id": "disponibilidad", "label": "Jerarquía y Motor de Slots", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "reserva", "label": "Entrega y Reserva Bitmap", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "motor_dia", "label": "Cálculo por Día (288 bits)", "lane": "orquestador", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "actualizacion_cita", "label": "Reserva / Liberación de Turno", "lane": "acceso_datos", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": [
+    "api_directorio",
+    "consultar_dir",
+    "consultar_disp",
+    "calcular_dia",
+    "generar_slots",
+    "respuesta_slots",
+    "marcar_cita",
+    "update_bitmap"
+  ],
+  "nodes": [
+    {
+      "id": "api_directorio",
+      "lane": "api_nextjs",
+      "col": 0,
+      "type": "frontend",
+      "label": "POST /api/directorio",
+      "sublabel": "filtros y paginacion",
+      "sources": [
+        { "path": "app/api/directorio/route.ts", "line": 6, "end_line": 24 }
+      ]
+    },
+    {
+      "id": "api_disp",
+      "lane": "api_nextjs",
+      "col": 1,
+      "type": "frontend",
+      "label": "POST /api/disponibilidad",
+      "sublabel": "vista DIA o RANGO",
+      "sources": [
+        { "path": "app/api/disponibilidad/route.ts", "line": 6, "end_line": 25 }
+      ]
+    },
+    {
+      "id": "consultar_dir",
+      "lane": "orquestador",
+      "col": 0,
+      "type": "backend",
+      "label": "Consultar Directorio",
+      "sublabel": "p_consultar_directorio",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 351, "end_line": 451 }
+      ]
+    },
+    {
+      "id": "consultar_disp",
+      "lane": "orquestador",
+      "col": 1,
+      "type": "backend",
+      "label": "Consultar Agenda",
+      "sublabel": "dia o rango fechas",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 488, "end_line": 625 }
+      ]
+    },
+    {
+      "id": "calcular_dia",
+      "lane": "orquestador",
+      "col": 2,
+      "type": "backend",
+      "label": "Evaluar Jerarquia",
+      "sublabel": "POR_DIA > PERS > BASE",
+      "tag": "vigencia activa",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 120, "end_line": 236 }
+      ]
+    },
+    {
+      "id": "generar_slots",
+      "lane": "orquestador",
+      "col": 3,
+      "type": "backend",
+      "label": "Motor de Slots",
+      "sublabel": "cruza bitmap_ocupado",
+      "tag": "bloques 5 min",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 275, "end_line": 327 }
+      ]
+    },
+    {
+      "id": "respuesta_slots",
+      "lane": "orquestador",
+      "col": 4,
+      "type": "frontend",
+      "label": "JSON Intervalos",
+      "sublabel": "turnos libres UI",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 329, "end_line": 344 }
+      ]
+    },
+    {
+      "id": "query_prof",
+      "lane": "acceso_datos",
+      "col": 0,
+      "type": "database",
+      "label": "Profesionales JSON",
+      "sublabel": "filtros multi-tabla",
+      "sources": [
+        { "path": "database/pkgcn_directorio_profesionales.pkb", "line": 108, "end_line": 245 }
+      ]
+    },
+    {
+      "id": "consultar_turnos",
+      "lane": "acceso_datos",
+      "col": 1,
+      "type": "database",
+      "label": "f_consultar_turnos",
+      "sublabel": "horarios y duracion",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 126, "end_line": 206 }
+      ]
+    },
+    {
+      "id": "leer_bitmap",
+      "lane": "acceso_datos",
+      "col": 3,
+      "type": "database",
+      "label": "Leer bitmap_ocupado",
+      "sublabel": "vector 288 posiciones",
+      "tag": "tkr_disponibilidad_bitmap",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 256, "end_line": 273 }
+      ]
+    },
+    {
+      "id": "marcar_cita",
+      "lane": "acceso_datos",
+      "col": 4,
+      "type": "backend",
+      "label": "Actualizar Slots Cita",
+      "sublabel": "M (marcar) / D (liberar)",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 1234, "end_line": 1272 }
+      ]
+    },
+    {
+      "id": "update_bitmap",
+      "lane": "acceso_datos",
+      "col": 5,
+      "type": "database",
+      "label": "Actualizar Bitmap",
+      "sublabel": "UPSERT bits 1 o 0",
+      "sources": [
+        { "path": "database/pkgca_tkr_disponibilidad_bitmap.pkb", "line": 10, "end_line": 142 }
+      ]
+    },
+    {
+      "id": "bloqueo_dia",
+      "lane": "bloqueos",
+      "col": 2,
+      "type": "security",
+      "label": "Dia No Disponible",
+      "sublabel": "ausencia / festivo / sin horario",
+      "sources": [
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 143, "end_line": 158 },
+        { "path": "database/pkgln_directorio_profesionales.pkb", "line": 212, "end_line": 253 }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "api_to_dir", "from": "api_directorio", "to": "consultar_dir", "variant": "emphasis" },
+    { "id": "dir_to_prof", "from": "consultar_dir", "to": "query_prof", "label": "JSON_VALUE", "variant": "dashed" },
+    { "id": "dir_to_disp", "from": "consultar_dir", "to": "consultar_disp", "label": "selecciona prof", "variant": "emphasis" },
+    { "id": "api_to_disp", "from": "api_disp", "to": "consultar_disp", "variant": "default" },
+    { "id": "turnos_to_disp", "from": "consultar_turnos", "to": "consultar_disp", "label": "turnos activos", "variant": "dashed" },
+    { "id": "disp_to_calc", "from": "consultar_disp", "to": "calcular_dia", "label": "por cada fecha", "variant": "emphasis" },
+    { "id": "calc_to_bloqueo", "from": "calcular_dia", "to": "bloqueo_dia", "label": "bloqueado", "variant": "security", "role": "error" },
+    { "id": "calc_to_slots", "from": "calcular_dia", "to": "generar_slots", "label": "horario vigente", "variant": "emphasis" },
+    { "id": "bitmap_to_slots", "from": "leer_bitmap", "to": "generar_slots", "label": "bits ocupados", "variant": "dashed" },
+    { "id": "slots_to_resp", "from": "generar_slots", "to": "respuesta_slots", "label": "slots libres", "variant": "emphasis" },
+    { "id": "resp_to_marcar", "from": "respuesta_slots", "to": "marcar_cita", "label": "reserva / cancela", "variant": "emphasis" },
+    { "id": "marcar_to_upd", "from": "marcar_cita", "to": "update_bitmap", "label": "idx_ini..idx_fin", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Prioridad de Horarios y Bloqueos",
+      "items": [
+        "Evalúa ausencias programadas (f_existe_ausencia) y festivos/domingos según trabaja_festivos.",
+        "Aplica jerarquía estricta POR_DIA (Prioridad 1) > PERSONALIZADO (Prioridad 2) > BASE (Prioridad 3)."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Cruce con Vector Binario de 288 Bits",
+      "items": [
+        "Cada turno se divide según duracion_cita_min en bloques de 5 minutos (posiciones 1..288).",
+        "Si algún bit en tkr_disponibilidad_bitmap.bitmap_ocupado vale '1', el intervalo se excluye de los turnos disponibles."
+      ]
+    }
+  ]
+}
+
