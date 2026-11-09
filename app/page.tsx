@@ -30,7 +30,11 @@ import {
   Download,
   Users,
   Mail,
-  Phone
+  Phone,
+  Database,
+  RefreshCw,
+  CheckCircle2,
+  Server
 } from 'lucide-react';
 
 
@@ -200,9 +204,32 @@ export default function DirectorioPage() {
   const [filtroTipoSinDisp, setFiltroTipoSinDisp] = useState<'TODAS' | 'SIN_MEDICOS' | 'CON_MEDICOS'>('TODAS');
   const [especialidadesContraidas, setEspecialidadesContraidas] = useState<Set<number>>(new Set());
 
-  // Modal de depuración PL/SQL (Ctrl + Alt + D)
+  // Modal de depuración PL/SQL (Ctrl + Alt + D) y prueba de conexión a Oracle
   const [mostrarModalDebug, setMostrarModalDebug] = useState(false);
+  const [tabDebugActiva, setTabDebugActiva] = useState<'plsql' | 'conexion'>('plsql');
+  const [procedimientoDebugSeleccionado, setProcedimientoDebugSeleccionado] = useState<
+    'directorio' | 'disponibilidad' | 'filtros' | 'sin_disponibilidad'
+  >('directorio');
   const [copiado, setCopiado] = useState(false);
+  const [probandoConexion, setProbandoConexion] = useState(false);
+  const [resultadoConexion, setResultadoConexion] = useState<any>(null);
+
+  const probarConexionOracle = useCallback(async () => {
+    setProbandoConexion(true);
+    try {
+      const res = await fetch('/api/test-db', { cache: 'no-store' });
+      const data = await res.json();
+      setResultadoConexion(data);
+    } catch (err: any) {
+      setResultadoConexion({
+        conectado: false,
+        mensaje: err?.message || 'Error de red al consultar /api/test-db',
+        codigo_oracle: 'ERR_NETWORK'
+      });
+    } finally {
+      setProbandoConexion(false);
+    }
+  }, []);
 
 
   // Calcular arreglo de días dentro del rango [fechaInicio .. fechaFin]
@@ -242,12 +269,24 @@ export default function DirectorioPage() {
     return lista;
   }, [fechaInicio, fechaFin]);
 
-  // Listener para atajo de teclado Ctrl + Alt + D
+  // Listener para atajo de teclado Ctrl + Alt + D (sin botón visible en interfaz)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.ctrlKey && e.altKey && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
-        setMostrarModalDebug((prev) => !prev);
+        setMostrarModalDebug((prev) => {
+          const next = !prev;
+          if (next) {
+            if (mostrarModalSinDisp) {
+              setProcedimientoDebugSeleccionado('sin_disponibilidad');
+            } else if (medicoSeleccionado) {
+              setProcedimientoDebugSeleccionado('disponibilidad');
+            } else {
+              setProcedimientoDebugSeleccionado('directorio');
+            }
+          }
+          return next;
+        });
       }
       if (e.key === 'Escape') {
         setMostrarModalDebug(false);
@@ -255,7 +294,7 @@ export default function DirectorioPage() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [mostrarModalSinDisp, medicoSeleccionado]);
 
   // Cargar catálogos iniciales
   useEffect(() => {
@@ -678,17 +717,188 @@ export default function DirectorioPage() {
       .filter(Boolean) as EspecialidadSinDisp[];
   }, [datosSinDisp, busquedaSinDisp, filtroTipoSinDisp]);
 
-  // Generar bloque anónimo PL/SQL según el contexto activo
-  const payloadActual = useMemo(() => {
-    if (medicoSeleccionado) {
-      return {
+  // Catálogo completo de procedimientos PL/SQL que el aplicativo invoca en Oracle Database
+  const catalogoProcedimientosPlsql = useMemo(() => {
+    const idMedicoEjemplo = medicoSeleccionado?.id || medicoSeleccionado?.id_usuario || profesionales[0]?.id || profesionales[0]?.id_usuario || 65;
+
+    return {
+      directorio: {
+        key: 'directorio' as const,
+        etiquetaCorta: '1. p_consultar_directorio',
+        endpointApi: 'POST /api/directorio',
+        procedimiento: 'PKGLN_DIRECTORIO_PROFESIONALES.p_consultar_directorio',
+        descripcion:
+          'Consulta el directorio paginado de profesionales habilitados (id_estado_usuario = 1, id_rol = 4 o en tkr_roles_usuario y con franja horaria activa) aplicando filtros multidimensionales y evaluando los días de servicio en el rango de fechas.',
+        jsonEntrada: {
+          pagina,
+          registros_por_pagina: 12,
+          busqueda: busqueda.trim() || null,
+          id_especialidad: idEspecialidad || null,
+          id_convenio: idConvenio || null,
+          id_tipo_aseguramiento: idTipoAseguramiento || null,
+          modalidad: modalidad || null,
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin
+        },
+        parametrosDoc: [
+          {
+            campo: 'pagina',
+            tipo: 'NUMBER',
+            obligatorio: 'NO',
+            descripcion: 'Número de página a recuperar (1-based, por defecto 1)',
+            ejemplo: String(pagina)
+          },
+          {
+            campo: 'registros_por_pagina',
+            tipo: 'NUMBER',
+            obligatorio: 'NO',
+            descripcion: 'Cantidad de profesionales devueltos por página (server-side pagination)',
+            ejemplo: '12'
+          },
+          {
+            campo: 'busqueda',
+            tipo: 'VARCHAR2(200)',
+            obligatorio: 'NO',
+            descripcion: 'Texto parcial para búsqueda sobre nombres, apellidos o correo electrónico',
+            ejemplo: busqueda ? `'${busqueda}'` : 'NULL'
+          },
+          {
+            campo: 'id_especialidad',
+            tipo: 'NUMBER(12)',
+            obligatorio: 'NO',
+            descripcion: 'Identificador de la especialidad médica (tkr_especialidades.id)',
+            ejemplo: idEspecialidad ? String(idEspecialidad) : 'NULL'
+          },
+          {
+            campo: 'id_convenio',
+            tipo: 'NUMBER(12)',
+            obligatorio: 'NO',
+            descripcion: 'Convenio admitido por el profesional en sus horarios (tkr_convenios.id)',
+            ejemplo: idConvenio ? String(idConvenio) : 'NULL'
+          },
+          {
+            campo: 'id_tipo_aseguramiento',
+            tipo: 'NUMBER(12)',
+            obligatorio: 'NO',
+            descripcion: '1 = Voluntario, 2 = Obligatorio. Regla de Negocio: Si una franja no tiene aseguramiento marcado (NULL), aplica para todos los tipos.',
+            ejemplo: idTipoAseguramiento ? String(idTipoAseguramiento) : 'NULL'
+          },
+          {
+            campo: 'modalidad',
+            tipo: 'VARCHAR2(1)',
+            obligatorio: 'NO',
+            descripcion: "'V' = Virtual, 'D' = Domiciliaria (filtra profesionales con franjas en dicha modalidad)",
+            ejemplo: modalidad ? `'${modalidad}'` : 'NULL'
+          },
+          {
+            campo: 'fecha_inicio',
+            tipo: 'VARCHAR2(10)',
+            obligatorio: 'NO',
+            descripcion: 'Fecha inicial del rango en formato YYYY-MM-DD para evaluar días de servicio activos',
+            ejemplo: `'${fechaInicio}'`
+          },
+          {
+            campo: 'fecha_fin',
+            tipo: 'VARCHAR2(10)',
+            obligatorio: 'NO',
+            descripcion: 'Fecha final del rango en formato YYYY-MM-DD para evaluar días de servicio activos',
+            ejemplo: `'${fechaFin}'`
+          },
+          {
+            campo: 'p_devolver_uno',
+            tipo: 'VARCHAR2(1)',
+            obligatorio: 'NO',
+            descripcion: "Si viene en 'S', devuelve únicamente 1 profesional aleatorio de los que tienen horario activo ('N' por defecto)",
+            ejemplo: "'S'"
+          }
+        ],
+        salidaDoc: [
+          {
+            campo: 'codigo',
+            tipo: 'NUMBER',
+            descripcion: '0 = Operación exitosa; código negativo en caso de excepción'
+          },
+          {
+            campo: 'mensaje',
+            tipo: 'VARCHAR2',
+            descripcion: 'Descripción del resultado obtenido'
+          },
+          {
+            campo: 'total_registros',
+            tipo: 'NUMBER',
+            descripcion: 'Cantidad total de profesionales habilitados que coinciden con los criterios de filtrado'
+          },
+          {
+            campo: 'total_paginas',
+            tipo: 'NUMBER',
+            descripcion: 'Número total de páginas calculadas según registros_por_pagina'
+          },
+          {
+            campo: 'pagina_actual',
+            tipo: 'NUMBER',
+            descripcion: 'Índice de la página actual consultada (1-based)'
+          },
+          {
+            campo: 'registros_pagina',
+            tipo: 'NUMBER',
+            descripcion: 'Límite de registros solicitados por página'
+          },
+          {
+            campo: 'profesionales',
+            tipo: 'JSON_ARRAY',
+            descripcion:
+              'Arreglo de objetos de profesionales habilitados: id_usuario (NUMBER), fullName / nombre_completo (VARCHAR2), correo (VARCHAR2), telefono (VARCHAR2), trabaja_festivos ("S"/"N"), url_foto (VARCHAR2), especialidades (JSON_ARRAY), modalidades (JSON_ARRAY ["V","D"]), days_of_service (días con horario en el rango).'
+          }
+        ],
+        ejemploSalidaJson: JSON.stringify(
+          {
+            codigo: 0,
+            mensaje: 'Directorio consultado exitosamente',
+            total_registros: 1,
+            total_paginas: 1,
+            pagina_actual: 1,
+            registros_pagina: 12,
+            profesionales: [
+              {
+                id_usuario: 65,
+                nombres: 'Carlos',
+                apellidos: 'Rojas',
+                correo: 'carlos.rojas@ejemplo.com',
+                telefono: '3001234567',
+                trabaja_festivos: 'N',
+                url_foto: 'https://tekerapp.maxapex.net/FILES_DEV_TEKER/logo_circulo.png',
+                especialidades: [
+                  { id: 10, nombre: 'Medicina General' },
+                  { id: 25, nombre: 'Pediatría' }
+                ],
+                modalidades: ['V', 'D'],
+                days_of_service: ['LU', 'MA', 'MI', 'JU', 'VI']
+              }
+            ]
+          },
+          null,
+          2
+        ),
+        reglasNegocio: [
+          'Habilitación: Solo se listan profesionales con id_estado_usuario = 1, rol médico (id_rol = 4 en tkr_usuarios o en tkr_roles_usuario) y con al menos un horario activo registrado (tkr_horarios_profesional.activo = 1).',
+          'Tipo de Aseguramiento: Si un horario del médico no especifica tipo de aseguramiento (id_tipo_aseguramiento IS NULL), se considera compatible con cualquier tipo de aseguramiento seleccionado.',
+          'Modalidades: Obtenidas a partir de las franjas activas en tkr_franjas_profesional (Virtual y/o Domiciliaria).'
+        ]
+      },
+
+      disponibilidad: {
+        key: 'disponibilidad' as const,
+        etiquetaCorta: '2. p_consultar_disponibilidad',
+        endpointApi: 'POST /api/disponibilidad',
         procedimiento: 'PKGLN_DIRECTORIO_PROFESIONALES.p_consultar_disponibilidad',
         descripcion:
-          'Consulta la disponibilidad horaria, jerarquía de turnos y vector bitmap (288 posiciones de 5 min) de un profesional específico para un día o semana.',
+          'Consulta la disponibilidad horaria, jerarquía de turnos (POR_DIA > PERSONALIZADO > BASE) y vector bitmap (288 posiciones de 5 min en tkr_disponibilidad_bitmap) de un profesional para un día específico (DIA) o un rango de fechas (RANGO).',
         jsonEntrada: {
-          id_usuario: medicoSeleccionado.id || medicoSeleccionado.id_usuario || 0,
+          id_usuario: idMedicoEjemplo,
           fecha: diaSeleccionadoModal || fechaInicio,
-          tipo_vista: 'DIA',
+          tipo_vista: medicoSeleccionado && !diaSeleccionadoModal ? 'RANGO' : 'DIA',
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin,
           id_convenio: idConvenio || null,
           id_tipo_aseguramiento: idTipoAseguramiento || 1,
           modalidad: modalidad || 'V'
@@ -699,21 +909,28 @@ export default function DirectorioPage() {
             tipo: 'NUMBER(12)',
             obligatorio: 'SÍ',
             descripcion: 'Identificador único del profesional médico (FK a tkr_usuarios.id)',
-            ejemplo: String(medicoSeleccionado.id_usuario)
+            ejemplo: String(idMedicoEjemplo)
           },
           {
             campo: 'fecha',
             tipo: 'VARCHAR2(10)',
-            obligatorio: 'SÍ',
+            obligatorio: 'SÍ (en vista DIA)',
             descripcion: 'Fecha a consultar en formato obligatorio ISO YYYY-MM-DD',
-            ejemplo: diaSeleccionadoModal || fechaInicio
+            ejemplo: `'${diaSeleccionadoModal || fechaInicio}'`
           },
           {
             campo: 'tipo_vista',
             tipo: 'VARCHAR2(10)',
             obligatorio: 'NO',
-            descripcion: "'DIA' para cálculo de slots por bloques de tiempo o 'SEMANA' para 7 días continuos",
+            descripcion: "'DIA' para cálculo de slots de una fecha puntual, 'SEMANA' para 7 días o 'RANGO' para evaluar entre fecha_inicio y fecha_fin",
             ejemplo: "'DIA'"
+          },
+          {
+            campo: 'fecha_inicio / fecha_fin',
+            tipo: 'VARCHAR2(10)',
+            obligatorio: 'SÍ (en vista RANGO)',
+            descripcion: 'Límites del rango de fechas en formato YYYY-MM-DD cuando tipo_vista = RANGO',
+            ejemplo: `'${fechaInicio}' a '${fechaFin}'`
           },
           {
             campo: 'id_convenio',
@@ -726,8 +943,8 @@ export default function DirectorioPage() {
             campo: 'id_tipo_aseguramiento',
             tipo: 'NUMBER(12)',
             obligatorio: 'SÍ',
-            descripcion: '1 = Voluntario (Prepagada/Póliza), 2 = Obligatorio (EPS). Regla de Negocio: Si una franja no tiene marcado tipo de aseguramiento (NULL en tkr_horarios_profesional), APLICA PARA TODOS los tipos de aseguramiento.',
-            ejemplo: String(idTipoAseguramiento)
+            descripcion: '1 = Voluntario (Prepagada/Póliza), 2 = Obligatorio (EPS). Si una franja tiene NULL en BD, aplica para ambos.',
+            ejemplo: String(idTipoAseguramiento || 1)
           },
           {
             campo: 'modalidad',
@@ -776,7 +993,7 @@ export default function DirectorioPage() {
           {
             campo: 'total_slots',
             tipo: 'NUMBER',
-            descripcion: 'Número total de intervalos de cita calculados y disponibles para la fecha'
+            descripcion: 'Número total de intervalos de cita calculados y disponibles para la fecha (o total_slots_rango en vista RANGO)'
           },
           {
             campo: 'bitmap_disponible',
@@ -793,7 +1010,7 @@ export default function DirectorioPage() {
           {
             codigo: 0,
             mensaje: 'Disponibilidad recuperada exitosamente',
-            id_usuario: medicoSeleccionado.id_usuario,
+            id_usuario: idMedicoEjemplo,
             fecha: diaSeleccionadoModal || fechaInicio,
             dia_semana: 'LU',
             tipo_horario_aplica: 'BASE',
@@ -824,153 +1041,238 @@ export default function DirectorioPage() {
         ),
         reglasNegocio: [
           'Jerarquía de Horarios: Nivel 1 (Horario por Día: fecha_inicial = fecha_final = fecha) prevalece sobre Nivel 2 (Personalizado: fecha_inicial <= fecha <= fecha_final), y éste sobre Nivel 3 (Base permanente: fecha_final IS NULL).',
-          'Tipo de Aseguramiento: Si una franja de horario NO tiene asignado tipo de aseguramiento (id_tipo_aseguramiento IS NULL en tkr_horarios_profesional), APLICA UNIVERSALMENTE para todos los tipos de aseguramiento (Voluntario y Obligatorio).',
-          'Convenios: Si id_convenio IS NULL en la franja, aplica a consultas generales y a cualquier convenio.',
+          'Cruce con Bitmap Ocupado: Descuenta automáticamente los bloques de 5 minutos marcados con "1" en tkr_disponibilidad_bitmap.bitmap_ocupado y los turnos anteriores a f_fecha_actual.',
           'Ausencias y Festivos: Las ausencias programadas (tkr_ausencias_profesional) bloquean la fecha completa devolviendo total_slots: 0 y motivo_bloqueo: AUSENCIA_PROGRAMADA. Festivos y domingos se bloquean salvo que el profesional tenga trabaja_festivos = S o cuente con un Horario por Día explícito.'
         ]
-      };
-    }
-
-    return {
-      procedimiento: 'PKGLN_DIRECTORIO_PROFESIONALES.p_consultar_directorio',
-      descripcion:
-        'Consulta el directorio paginado de profesionales habilitados (id_estado_usuario = 1, id_rol = 4 o roles_usuario y franja horaria activa) con filtros multidimensionales.',
-      jsonEntrada: {
-        pagina,
-        registros_por_pagina: 12,
-        busqueda: busqueda.trim() || null,
-        id_especialidad: idEspecialidad || null,
-        id_convenio: idConvenio || null,
-        id_tipo_aseguramiento: idTipoAseguramiento || null,
-        modalidad: modalidad || null
       },
-      parametrosDoc: [
-        {
-          campo: 'pagina',
-          tipo: 'NUMBER',
-          obligatorio: 'NO',
-          descripcion: 'Número de página a recuperar (1-based, por defecto 1)',
-          ejemplo: String(pagina)
+
+      filtros: {
+        key: 'filtros' as const,
+        etiquetaCorta: '3. p_consultar_filtros',
+        endpointApi: 'GET /api/filtros',
+        procedimiento: 'PKGLN_DIRECTORIO_PROFESIONALES.p_consultar_filtros',
+        descripcion:
+          'Recupera en una única llamada los catálogos maestros requeridos para inicializar los selectores de filtrado del Directorio de Profesionales: especialidades médicas activas, convenios/aseguradoras, tipos de aseguramiento y modalidades de atención.',
+        jsonEntrada: {},
+        parametrosDoc: [
+          {
+            campo: 'p_json_entrada',
+            tipo: 'CLOB (JSON)',
+            obligatorio: 'NO',
+            descripcion: 'Objeto JSON vacío ({}) o metadatos opcionales de auditoría (id_usuario_ejecutor, codigo_traza)',
+            ejemplo: "'{}'"
+          }
+        ],
+        salidaDoc: [
+          {
+            campo: 'codigo',
+            tipo: 'NUMBER',
+            descripcion: '0 = Catálogos cargados exitosamente; negativo en caso de error'
+          },
+          {
+            campo: 'mensaje',
+            tipo: 'VARCHAR2',
+            descripcion: 'Mensaje de confirmación de la consulta de catálogos'
+          },
+          {
+            campo: 'especialidades',
+            tipo: 'JSON_ARRAY',
+            descripcion: 'Lista de especialidades [{ id: NUMBER, nombre: VARCHAR2 }] desde tkr_especialidades'
+          },
+          {
+            campo: 'convenios',
+            tipo: 'JSON_ARRAY',
+            descripcion: 'Lista de convenios activos [{ id: NUMBER, nombre: VARCHAR2 }] desde tkr_convenios'
+          },
+          {
+            campo: 'tipos_aseguramiento',
+            tipo: 'JSON_ARRAY',
+            descripcion: 'Lista de tipos de aseguramiento [{ id: 1, nombre: "Voluntario" }, { id: 2, nombre: "Obligatorio" }] desde tkr_tipos_aseguramiento'
+          },
+          {
+            campo: 'modalidades',
+            tipo: 'JSON_ARRAY',
+            descripcion: 'Lista de modalidades de atención [{ codigo: "V", nombre: "Virtual" }, { codigo: "D", nombre: "Domiciliaria" }]'
+          }
+        ],
+        ejemploSalidaJson: JSON.stringify(
+          {
+            codigo: 0,
+            mensaje: 'Catálogos de filtros consultados exitosamente',
+            especialidades: [
+              { id: 10, nombre: 'Medicina General' },
+              { id: 25, nombre: 'Pediatría' }
+            ],
+            convenios: [
+              { id: 1, nombre: 'Allianz Salud' },
+              { id: 2, nombre: 'Sura Póliza' }
+            ],
+            tipos_aseguramiento: [
+              { id: 1, nombre: 'Voluntario' },
+              { id: 2, nombre: 'Obligatorio' }
+            ],
+            modalidades: [
+              { codigo: 'V', nombre: 'Virtual (Telemedicina)' },
+              { codigo: 'D', nombre: 'Domiciliaria' }
+            ]
+          },
+          null,
+          2
+        ),
+        reglasNegocio: [
+          'Se invoca automáticamente al iniciar la pantalla del Directorio de Profesionales.',
+          'Delega la consulta multi-tabla a PKGCN_DIRECTORIO_PROFESIONALES.p_consultar_filtros_catalogo_json respetando el estándar de capas.'
+        ]
+      },
+
+      sin_disponibilidad: {
+        key: 'sin_disponibilidad' as const,
+        etiquetaCorta: '4. p_consultar_sin_disponibilidad',
+        endpointApi: 'GET / POST /api/sin-disponibilidad',
+        procedimiento: 'PKGLN_DIRECTORIO_PROFESIONALES.p_consultar_sin_disponibilidad',
+        descripcion:
+          'Evalúa todas las especialidades médicas del sistema en un rango de fechas e identifica: (1) Especialidades que no tienen ningún profesional asignado, y (2) Especialidades cuyos profesionales tienen 0 cupos libres en el rango consultado.',
+        jsonEntrada: {
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin,
+          id_convenio: idConvenio || null,
+          id_tipo_aseguramiento: idTipoAseguramiento || 1,
+          modalidad: modalidad || 'V',
+          id_especialidad: idEspecialidad || null
         },
-        {
-          campo: 'registros_por_pagina',
-          tipo: 'NUMBER',
-          obligatorio: 'NO',
-          descripcion: 'Cantidad de profesionales devueltos por página (server-side pagination)',
-          ejemplo: '12'
-        },
-        {
-          campo: 'busqueda',
-          tipo: 'VARCHAR2',
-          obligatorio: 'NO',
-          descripcion: 'Texto parcial para búsqueda sobre nombres, apellidos o correo electrónico',
-          ejemplo: busqueda ? `'${busqueda}'` : 'NULL'
-        },
-        {
-          campo: 'id_especialidad',
-          tipo: 'NUMBER(12)',
-          obligatorio: 'NO',
-          descripcion: 'Identificador de la especialidad médica (tkr_especialidades.id)',
-          ejemplo: idEspecialidad ? String(idEspecialidad) : 'NULL'
-        },
-        {
-          campo: 'id_convenio',
-          tipo: 'NUMBER(12)',
-          obligatorio: 'NO',
-          descripcion: 'Convenio admitido por el profesional en sus horarios (tkr_convenios.id)',
-          ejemplo: idConvenio ? String(idConvenio) : 'NULL'
-        },
-        {
-          campo: 'id_tipo_aseguramiento',
-          tipo: 'NUMBER(12)',
-          obligatorio: 'NO',
-          descripcion: '1 = Voluntario, 2 = Obligatorio. Regla de Negocio: Si una franja no tiene aseguramiento marcado (NULL), aplica para todos los tipos.',
-          ejemplo: idTipoAseguramiento ? String(idTipoAseguramiento) : 'NULL'
-        },
-        {
-          campo: 'modalidad',
-          tipo: 'VARCHAR2(1)',
-          obligatorio: 'NO',
-          descripcion: "'V' = Virtual, 'D' = Domiciliaria (filtra profesionales con franjas en dicha modalidad)",
-          ejemplo: modalidad ? `'${modalidad}'` : 'NULL'
-        }
-      ],
-      salidaDoc: [
-        {
-          campo: 'codigo',
-          tipo: 'NUMBER',
-          descripcion: '0 = Operación exitosa; código negativo en caso de excepción'
-        },
-        {
-          campo: 'mensaje',
-          tipo: 'VARCHAR2',
-          descripcion: 'Descripción del resultado obtenido'
-        },
-        {
-          campo: 'total_registros',
-          tipo: 'NUMBER',
-          descripcion: 'Cantidad total de profesionales habilitados que coinciden con los criterios de filtrado'
-        },
-        {
-          campo: 'total_paginas',
-          tipo: 'NUMBER',
-          descripcion: 'Número total de páginas calculadas según registros_por_pagina'
-        },
-        {
-          campo: 'pagina_actual',
-          tipo: 'NUMBER',
-          descripcion: 'Índice de la página actual consultada (1-based)'
-        },
-        {
-          campo: 'registros_pagina',
-          tipo: 'NUMBER',
-          descripcion: 'Límite de registros solicitados por página'
-        },
-        {
-          campo: 'profesionales',
-          tipo: 'JSON_ARRAY',
-          descripcion:
-            'Arreglo de objetos de profesionales habilitados. Cada elemento contiene: id_usuario (NUMBER, ID en tkr_usuarios), nombres (VARCHAR2), apellidos (VARCHAR2), correo (VARCHAR2), telefono (VARCHAR2), trabaja_festivos (VARCHAR2 "S"/"N"), url_foto (VARCHAR2 URL imagen avatar), especialidades (JSON_ARRAY con [{ id, nombre }]), modalidades (JSON_ARRAY con ["V", "D"]).'
-        }
-      ],
-      ejemploSalidaJson: JSON.stringify(
-        {
-          codigo: 0,
-          mensaje: 'Directorio consultado exitosamente',
-          total_registros: 1,
-          total_paginas: 1,
-          pagina_actual: 1,
-          registros_pagina: 12,
-          profesionales: [
-            {
-              id_usuario: 65,
-              nombres: 'Carlos',
-              apellidos: 'Rojas',
-              correo: 'carlos.rojas@ejemplo.com',
-              telefono: '3001234567',
-              trabaja_festivos: 'N',
-              url_foto: 'https://tekerapp.maxapex.net/FILES_DEV_TEKER/logo_circulo.png',
-              especialidades: [
-                { id: 10, nombre: 'Medicina General' },
-                { id: 25, nombre: 'Pediatría' }
-              ],
-              modalidades: ['V', 'D']
-            }
-          ]
-        },
-        null,
-        2
-      ),
-      reglasNegocio: [
-        'Habilitación: Solo se listan profesionales con id_estado_usuario = 1, rol médico (id_rol = 4 en tkr_usuarios o en tkr_roles_usuario) y con al menos un horario activo registrado (tkr_horarios_profesional.activo = 1).',
-        'Tipo de Aseguramiento: Si un horario del médico no especifica tipo de aseguramiento (id_tipo_aseguramiento IS NULL), se considera compatible con cualquier tipo de aseguramiento seleccionado.',
-        'Modalidades: Obtenidas a partir de las franjas activas en tkr_franjas_profesional (Virtual y/o Domiciliaria).'
-      ]
+        parametrosDoc: [
+          {
+            campo: 'fecha_inicio',
+            tipo: 'VARCHAR2(10)',
+            obligatorio: 'SÍ',
+            descripcion: 'Fecha inicial del periodo a auditar en formato YYYY-MM-DD',
+            ejemplo: `'${fechaInicio}'`
+          },
+          {
+            campo: 'fecha_fin',
+            tipo: 'VARCHAR2(10)',
+            obligatorio: 'SÍ',
+            descripcion: 'Fecha final del periodo a auditar en formato YYYY-MM-DD',
+            ejemplo: `'${fechaFin}'`
+          },
+          {
+            campo: 'id_convenio',
+            tipo: 'NUMBER(12)',
+            obligatorio: 'NO',
+            descripcion: 'Identificador del convenio para filtrar la evaluación de cupos (NULL = todos)',
+            ejemplo: idConvenio ? String(idConvenio) : 'NULL'
+          },
+          {
+            campo: 'id_tipo_aseguramiento',
+            tipo: 'NUMBER(12)',
+            obligatorio: 'NO',
+            descripcion: 'Tipo de aseguramiento (1 = Voluntario, 2 = Obligatorio)',
+            ejemplo: String(idTipoAseguramiento || 1)
+          },
+          {
+            campo: 'modalidad',
+            tipo: 'VARCHAR2(1)',
+            obligatorio: 'NO',
+            descripcion: "Modalidad de atención a evaluar ('V' = Virtual, 'D' = Domiciliaria)",
+            ejemplo: `'${modalidad || 'V'}'`
+          },
+          {
+            campo: 'id_especialidad',
+            tipo: 'NUMBER(12)',
+            obligatorio: 'NO',
+            descripcion: 'Permite acotar el reporte a una especialidad específica (NULL evalúa todas)',
+            ejemplo: idEspecialidad ? String(idEspecialidad) : 'NULL'
+          }
+        ],
+        salidaDoc: [
+          {
+            campo: 'codigo',
+            tipo: 'NUMBER',
+            descripcion: '0 = Reporte generado exitosamente; negativo en caso de error'
+          },
+          {
+            campo: 'mensaje',
+            tipo: 'VARCHAR2',
+            descripcion: 'Mensaje descriptivo de la operación'
+          },
+          {
+            campo: 'fecha_inicio / fecha_fin',
+            tipo: 'VARCHAR2(10)',
+            descripcion: 'Rango de fechas auditado en formato YYYY-MM-DD'
+          },
+          {
+            campo: 'total_sin_disponibilidad',
+            tipo: 'NUMBER',
+            descripcion: 'Cantidad total de especialidades afectadas (sin médicos o con médicos sin cupos)'
+          },
+          {
+            campo: 'total_especialidades_sin_medicos',
+            tipo: 'NUMBER',
+            descripcion: 'Cantidad de especialidades del catálogo que no tienen profesionales activos vinculados'
+          },
+          {
+            campo: 'total_medicos_sin_cupos',
+            tipo: 'NUMBER',
+            descripcion: 'Cantidad de profesionales activos que tienen 0 slots disponibles en todo el rango'
+          },
+          {
+            campo: 'especialidades',
+            tipo: 'JSON_ARRAY',
+            descripcion: 'Arreglo detallado por especialidad con id_especialidad, nombre_especialidad, tiene_profesionales, tipo y arreglo de profesionales con 0 cupos.'
+          }
+        ],
+        ejemploSalidaJson: JSON.stringify(
+          {
+            codigo: 0,
+            mensaje: 'Consulta de especialidades y profesionales sin disponibilidad completada exitosamente',
+            fecha_inicio: fechaInicio,
+            fecha_fin: fechaFin,
+            total_sin_disponibilidad: 2,
+            total_especialidades_sin_medicos: 1,
+            total_medicos_sin_cupos: 1,
+            especialidades: [
+              {
+                id_especialidad: 14,
+                nombre_especialidad: 'Dermatología',
+                tiene_profesionales: true,
+                tipo: 'CON_PROFESIONALES_SIN_DISPONIBILIDAD',
+                total_profesionales: 1,
+                profesionales: [
+                  {
+                    id_usuario: 82,
+                    nombre_completo: 'Dra. Laura Méndez',
+                    correo: 'laura.mendez@teker.com',
+                    telefono: '3109876543',
+                    days_of_service: 'LU, MI, VI',
+                    motivo: 'Horarios configurados (LU, MI, VI) pero sin slots libres'
+                  }
+                ]
+              },
+              {
+                id_especialidad: 31,
+                nombre_especialidad: 'Neurología Pediátrica',
+                tiene_profesionales: false,
+                tipo: 'SIN_PROFESIONALES',
+                total_profesionales: 0,
+                profesionales: []
+              }
+            ]
+          },
+          null,
+          2
+        ),
+        reglasNegocio: [
+          'Clasificación Dual: Separa claramente las especialidades que carecen de médicos asignados (SIN_PROFESIONALES) de aquellas cuyos médicos no tienen cupos libres en el rango (CON_PROFESIONALES_SIN_DISPONIBILIDAD).',
+          'Exportación: Permite alimentar el reporte descargable en Excel (.xlsx) para gestión operativa de agenda.'
+        ]
+      }
     };
   }, [
     medicoSeleccionado,
+    profesionales,
     diaSeleccionadoModal,
     fechaInicio,
+    fechaFin,
     idConvenio,
     idTipoAseguramiento,
     modalidad,
@@ -978,6 +1280,8 @@ export default function DirectorioPage() {
     busqueda,
     idEspecialidad
   ]);
+
+  const payloadActual = catalogoProcedimientosPlsql[procedimientoDebugSeleccionado];
 
   const codigoPlsqlAnonimo = useMemo(() => {
     const payloadStr = JSON.stringify(payloadActual.jsonEntrada, null, 2);
@@ -1048,17 +1352,6 @@ END;
                 onChange={(e) => setFechaFin(e.target.value)}
               />
             </div>
-
-            {/* Botón de acceso directo a la consola de depuración PL/SQL */}
-            <button
-              type="button"
-              className="debug-badge"
-              title="Atajo de teclado: Ctrl + Alt + D"
-              onClick={() => setMostrarModalDebug(true)}
-            >
-              <Code2 size={15} style={{ color: 'var(--primary)' }} />
-              <span>Ctrl+Alt+D (PL/SQL)</span>
-            </button>
           </div>
         </div>
       </header>
@@ -1623,7 +1916,7 @@ END;
         </div>
       )}
 
-      {/* Modal 2: Consola de Diagnóstico / Bloque Anónimo PL/SQL (Ctrl + Alt + D) */}
+      {/* Modal 2: Consola de Diagnóstico / Bloque Anónimo PL/SQL y Prueba de Conexión (Ctrl + Alt + D) */}
       {mostrarModalDebug && (
         <div className="modal-overlay" onClick={() => setMostrarModalDebug(false)}>
           <div className="modal-content debug-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -1632,10 +1925,12 @@ END;
                 <Terminal size={22} style={{ color: 'var(--primary)' }} />
                 <div>
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>
-                    Consola de Depuración PL/SQL (Ctrl + Alt + D)
+                    Documentación y Consola PL/SQL (Ctrl + Alt + D)
                   </h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {payloadActual.procedimiento}
+                    {tabDebugActiva === 'plsql'
+                      ? payloadActual.procedimiento
+                      : 'Diagnóstico y Prueba de Conexión en Vivo a Oracle Database'}
                   </p>
                 </div>
               </div>
@@ -1644,155 +1939,567 @@ END;
               </button>
             </div>
 
+            {/* Barra de Pestañas (Tabs) en la ventana de documentación */}
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                padding: '10px 24px',
+                background: '#f8fafc',
+                borderBottom: '1px solid var(--border)'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setTabDebugActiva('plsql')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: tabDebugActiva === 'plsql' ? '1px solid var(--primary)' : '1px solid var(--border)',
+                  background: tabDebugActiva === 'plsql' ? 'var(--primary)' : 'white',
+                  color: tabDebugActiva === 'plsql' ? 'white' : 'var(--text-main)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Code2 size={16} />
+                <span>Documentación PL/SQL</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTabDebugActiva('conexion');
+                  if (!resultadoConexion && !probandoConexion) {
+                    probarConexionOracle();
+                  }
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: tabDebugActiva === 'conexion' ? '1px solid var(--primary)' : '1px solid var(--border)',
+                  background: tabDebugActiva === 'conexion' ? 'var(--primary)' : 'white',
+                  color: tabDebugActiva === 'conexion' ? 'white' : 'var(--text-main)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Database size={16} />
+                <span>Probar Conexión a Oracle</span>
+              </button>
+            </div>
+
             <div className="modal-body">
-              {/* Explicación del Procedimiento */}
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-                  {payloadActual.descripcion}
-                </p>
-              </div>
-
-              {/* Bloque Anónimo con Botón de Copiar */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                    Bloque Anónimo Oracle PL/SQL (Listo para ejecutar en SQL Developer / PL/SQL Developer / Toad):
-                  </span>
-                </div>
-
-                <div className="code-block-container">
-                  <button
-                    type="button"
-                    className={`btn-copy-code ${copiado ? 'copied' : ''}`}
-                    onClick={copiarAlPortapapeles}
-                  >
-                    {copiado ? <Check size={14} /> : <Copy size={14} />}
-                    <span>{copiado ? '¡Copiado!' : 'Copiar Bloque PL/SQL'}</span>
-                  </button>
-                  <pre style={{ margin: 0 }}>
-                    <code>{codigoPlsqlAnonimo}</code>
-                  </pre>
-                </div>
-              </div>
-
-              {/* Tabla de Explicación de Parámetros de Entrada */}
-              <div style={{ marginTop: 24 }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8 }}>
-                  Diccionario de Parámetros de Entrada (Payload JSON de Entrada):
-                </h4>
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="debug-table">
-                    <thead>
-                      <tr>
-                        <th>Campo</th>
-                        <th>Tipo</th>
-                        <th>Obligatorio</th>
-                        <th>Descripción</th>
-                        <th>Valor Actual</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {payloadActual.parametrosDoc.map((param) => (
-                        <tr key={param.campo}>
-                          <td>
-                            <code>{param.campo}</code>
-                          </td>
-                          <td>{param.tipo}</td>
-                          <td>
-                            <span
-                              style={{
-                                color: param.obligatorio === 'SÍ' ? '#dc2626' : '#64748b',
-                                fontWeight: param.obligatorio === 'SÍ' ? 700 : 500
-                              }}
-                            >
-                              {param.obligatorio}
-                            </span>
-                          </td>
-                          <td>{param.descripcion}</td>
-                          <td>
-                            <strong>{param.ejemplo}</strong>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Tabla de Explicación de Salida del Método */}
-              <div style={{ marginTop: 24 }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8 }}>
-                  Estructura de Salida del Método (Payload JSON de Respuesta):
-                </h4>
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="debug-table">
-                    <thead>
-                      <tr>
-                        <th>Campo de Salida</th>
-                        <th>Tipo</th>
-                        <th>Descripción y Contenido</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {payloadActual.salidaDoc.map((out) => (
-                        <tr key={out.campo}>
-                          <td>
-                            <code style={{ color: '#059669', background: '#ecfdf5' }}>{out.campo}</code>
-                          </td>
-                          <td>{out.tipo}</td>
-                          <td>{out.descripcion}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Ejemplo de JSON de Salida */}
-                {payloadActual.ejemploSalidaJson && (
-                  <div style={{ marginTop: 14 }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                      Ejemplo de JSON de Respuesta:
-                    </span>
-                    <pre
+              {tabDebugActiva === 'plsql' ? (
+                <>
+                  {/* Selector de los 4 procedimientos PL/SQL que invoca el aplicativo */}
+                  <div style={{ marginBottom: 18 }}>
+                    <span
                       style={{
-                        background: '#0f172a',
-                        color: '#38bdf8',
-                        padding: 14,
-                        borderRadius: 8,
+                        display: 'block',
                         fontSize: '0.8rem',
-                        overflowX: 'auto',
-                        marginTop: 6,
-                        border: '1px solid #334155'
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.03em',
+                        marginBottom: 8
                       }}
                     >
-                      <code>{payloadActual.ejemploSalidaJson}</code>
-                    </pre>
+                      Procedimientos de Base de Datos Invocados por la Aplicación:
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {(
+                        ['directorio', 'disponibilidad', 'filtros', 'sin_disponibilidad'] as const
+                      ).map((procKey) => {
+                        const item = catalogoProcedimientosPlsql[procKey];
+                        const activo = procedimientoDebugSeleccionado === procKey;
+                        return (
+                          <button
+                            key={procKey}
+                            type="button"
+                            onClick={() => setProcedimientoDebugSeleccionado(procKey)}
+                            style={{
+                              padding: '8px 14px',
+                              borderRadius: 8,
+                              fontSize: '0.82rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              border: activo ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                              background: activo ? '#e0f2fe' : 'white',
+                              color: activo ? '#0369a1' : 'var(--text-main)',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            {item.etiquetaCorta}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {/* Reglas de Negocio Destacadas */}
-              <div style={{ marginTop: 24 }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8, color: '#1e3a8a' }}>
-                  Reglas de Negocio y Estándares Aplicados:
-                </h4>
-                <div
-                  style={{
-                    background: '#f8fafc',
-                    border: '1.5px solid #e2e8f0',
-                    borderRadius: 8,
-                    padding: '14px 18px'
-                  }}
-                >
-                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', lineHeight: 1.6, color: '#334155' }}>
-                    {payloadActual.reglasNegocio.map((regla, idx) => (
-                      <li key={idx} style={{ marginBottom: 6 }}>
-                        {regla}
-                      </li>
-                    ))}
-                  </ul>
+                  {/* Cabecera y Explicación del Procedimiento Seleccionado */}
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: '12px 16px',
+                      background: '#f8fafc',
+                      borderRadius: 10,
+                      border: '1px solid var(--border)'
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 8,
+                        marginBottom: 6
+                      }}
+                    >
+                      <code style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0284c7' }}>
+                        {payloadActual.procedimiento}(p_json_entrada IN CLOB, p_json_salida OUT CLOB)
+                      </code>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: 9999,
+                          background: '#eef2ff',
+                          color: '#4338ca',
+                          border: '1px solid #c7d2fe'
+                        }}
+                      >
+                        Endpoint: {payloadActual.endpointApi}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.88rem', color: 'var(--text-main)', lineHeight: 1.5, margin: 0 }}>
+                      {payloadActual.descripcion}
+                    </p>
+                  </div>
+
+                  {/* Bloque Anónimo con Botón de Copiar */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                        Bloque Anónimo Oracle PL/SQL (Listo para ejecutar en SQL Developer / PL/SQL Developer / Toad):
+                      </span>
+                    </div>
+
+                    <div className="code-block-container">
+                      <button
+                        type="button"
+                        className={`btn-copy-code ${copiado ? 'copied' : ''}`}
+                        onClick={copiarAlPortapapeles}
+                      >
+                        {copiado ? <Check size={14} /> : <Copy size={14} />}
+                        <span>{copiado ? '¡Copiado!' : 'Copiar Bloque PL/SQL'}</span>
+                      </button>
+                      <pre style={{ margin: 0 }}>
+                        <code>{codigoPlsqlAnonimo}</code>
+                      </pre>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Explicación de Parámetros de Entrada */}
+                  <div style={{ marginTop: 24 }}>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8 }}>
+                      Diccionario de Parámetros de Entrada (Payload JSON de Entrada):
+                    </h4>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="debug-table">
+                        <thead>
+                          <tr>
+                            <th>Campo</th>
+                            <th>Tipo</th>
+                            <th>Obligatorio</th>
+                            <th>Descripción</th>
+                            <th>Valor Actual</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payloadActual.parametrosDoc.map((param) => (
+                            <tr key={param.campo}>
+                              <td>
+                                <code>{param.campo}</code>
+                              </td>
+                              <td>{param.tipo}</td>
+                              <td>
+                                <span
+                                  style={{
+                                    color: param.obligatorio === 'SÍ' ? '#dc2626' : '#64748b',
+                                    fontWeight: param.obligatorio === 'SÍ' ? 700 : 500
+                                  }}
+                                >
+                                  {param.obligatorio}
+                                </span>
+                              </td>
+                              <td>{param.descripcion}</td>
+                              <td>
+                                <strong>{param.ejemplo}</strong>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Explicación de Salida del Método */}
+                  <div style={{ marginTop: 24 }}>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8 }}>
+                      Estructura de Salida del Método (Payload JSON de Respuesta):
+                    </h4>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="debug-table">
+                        <thead>
+                          <tr>
+                            <th>Campo de Salida</th>
+                            <th>Tipo</th>
+                            <th>Descripción y Contenido</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payloadActual.salidaDoc.map((out) => (
+                            <tr key={out.campo}>
+                              <td>
+                                <code style={{ color: '#059669', background: '#ecfdf5' }}>{out.campo}</code>
+                              </td>
+                              <td>{out.tipo}</td>
+                              <td>{out.descripcion}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Ejemplo de JSON de Salida */}
+                    {payloadActual.ejemploSalidaJson && (
+                      <div style={{ marginTop: 14 }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                          Ejemplo de JSON de Respuesta:
+                        </span>
+                        <pre
+                          style={{
+                            background: '#0f172a',
+                            color: '#38bdf8',
+                            padding: 14,
+                            borderRadius: 8,
+                            fontSize: '0.8rem',
+                            overflowX: 'auto',
+                            marginTop: 6,
+                            border: '1px solid #334155'
+                          }}
+                        >
+                          <code>{payloadActual.ejemploSalidaJson}</code>
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reglas de Negocio Destacadas */}
+                  <div style={{ marginTop: 24 }}>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8, color: '#1e3a8a' }}>
+                      Reglas de Negocio y Estándares Aplicados:
+                    </h4>
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        border: '1.5px solid #e2e8f0',
+                        borderRadius: 8,
+                        padding: '14px 18px'
+                      }}
+                    >
+                      <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', lineHeight: 1.6, color: '#334155' }}>
+                        {payloadActual.reglasNegocio.map((regla, idx) => (
+                          <li key={idx} style={{ marginBottom: 6 }}>
+                            {regla}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* TAB 2: PROBAR CONEXIÓN A ORACLE DATABASE */
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 12,
+                      padding: '16px 20px',
+                      background: resultadoConexion
+                        ? resultadoConexion.conectado
+                          ? '#ecfdf5'
+                          : '#fef2f2'
+                        : '#f8fafc',
+                      border: `1.5px solid ${
+                        resultadoConexion
+                          ? resultadoConexion.conectado
+                            ? '#6ee7b7'
+                            : '#fecaca'
+                          : '#e2e8f0'
+                      }`,
+                      borderRadius: 12,
+                      marginBottom: 20
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {probandoConexion ? (
+                        <RefreshCw size={24} style={{ color: 'var(--primary)' }} />
+                      ) : resultadoConexion?.conectado ? (
+                        <CheckCircle2 size={26} style={{ color: '#059669' }} />
+                      ) : (
+                        <AlertCircle size={26} style={{ color: resultadoConexion ? '#dc2626' : '#64748b' }} />
+                      )}
+                      <div>
+                        <h4
+                          style={{
+                            fontSize: '1rem',
+                            fontWeight: 700,
+                            color: resultadoConexion
+                              ? resultadoConexion.conectado
+                                ? '#065f46'
+                                : '#991b1b'
+                              : '#0f172a'
+                          }}
+                        >
+                          {probandoConexion
+                            ? 'Verificando conexión con Oracle Database...'
+                            : resultadoConexion
+                            ? resultadoConexion.conectado
+                              ? 'Conexión Exitosa a Oracle Database'
+                              : `Error de Conexión (${resultadoConexion.codigo_oracle || 'Fallo'})`
+                            : 'Listo para probar la conexión'}
+                        </h4>
+                        <p style={{ fontSize: '0.84rem', color: '#475569', marginTop: 2 }}>
+                          {probandoConexion
+                            ? 'Estableciendo sesión y consultando diccionario de datos...'
+                            : resultadoConexion?.mensaje || 'Haga clic en el botón para ejecutar la prueba en tiempo real.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={probarConexionOracle}
+                      disabled={probandoConexion}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        background: 'var(--primary)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '10px 18px',
+                        borderRadius: 8,
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        cursor: probandoConexion ? 'not-allowed' : 'pointer',
+                        opacity: probandoConexion ? 0.65 : 1
+                      }}
+                    >
+                      <RefreshCw size={15} />
+                      <span>{probandoConexion ? 'Probando...' : 'Probar Conexión Ahora'}</span>
+                    </button>
+                  </div>
+
+                  {/* Tarjetas de Configuración y Sesión */}
+                  {resultadoConexion && (
+                    <>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                          gap: 16,
+                          marginBottom: 20
+                        }}
+                      >
+                        {/* Parámetros .env.local */}
+                        <div
+                          style={{
+                            background: 'white',
+                            border: '1px solid var(--border)',
+                            borderRadius: 10,
+                            padding: 16
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                            <Server size={16} style={{ color: 'var(--primary)' }} />
+                            <h5 style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                              Parámetros Configurados (.env.local)
+                            </h5>
+                          </div>
+                          <table className="debug-table" style={{ marginTop: 0 }}>
+                            <tbody>
+                              <tr>
+                                <th>Usuario (ORACLE_DB_USER)</th>
+                                <td>
+                                  <code>{resultadoConexion.configuracion?.user || '-'}</code>
+                                </td>
+                              </tr>
+                              <tr>
+                                <th>Contraseña</th>
+                                <td>
+                                  <code>{resultadoConexion.configuracion?.password_masked || '****'}</code>
+                                </td>
+                              </tr>
+                              <tr>
+                                <th>Cadena de Conexión</th>
+                                <td>
+                                  <code>{resultadoConexion.configuracion?.connectString || '-'}</code>
+                                </td>
+                              </tr>
+                              <tr>
+                                <th>Modo Driver</th>
+                                <td>{resultadoConexion.configuracion?.modo_driver || 'Thin'}</td>
+                              </tr>
+                              <tr>
+                                <th>Latencia Total</th>
+                                <td>
+                                  <strong>{resultadoConexion.latencia_total_ms ?? '-'} ms</strong>
+                                  {resultadoConexion.latencia_conexion_ms !== undefined && (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginLeft: 6 }}>
+                                      (Handshake: {resultadoConexion.latencia_conexion_ms} ms)
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Datos de la Sesión en Oracle */}
+                        {resultadoConexion.conectado && resultadoConexion.sesion && (
+                          <div
+                            style={{
+                              background: 'white',
+                              border: '1px solid var(--border)',
+                              borderRadius: 10,
+                              padding: 16
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                              <Database size={16} style={{ color: '#059669' }} />
+                              <h5 style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                                Sesión Activa en el Servidor Oracle
+                              </h5>
+                            </div>
+                            <table className="debug-table" style={{ marginTop: 0 }}>
+                              <tbody>
+                                <tr>
+                                  <th>Esquema Conectado</th>
+                                  <td>
+                                    <code style={{ color: '#059669', background: '#ecfdf5' }}>
+                                      {resultadoConexion.sesion.usuario_actual}
+                                    </code>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <th>Base de Datos / PDB</th>
+                                  <td>
+                                    <strong>{resultadoConexion.sesion.db_name}</strong> /{' '}
+                                    <code>{resultadoConexion.sesion.con_name}</code>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <th>Instancia / Host</th>
+                                  <td>
+                                    {resultadoConexion.sesion.instance_name} ({resultadoConexion.sesion.server_host})
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <th>Fecha/Hora Servidor (Bogotá)</th>
+                                  <td>{resultadoConexion.sesion.fecha_servidor}</td>
+                                </tr>
+                                <tr>
+                                  <th>Filas en TKR_DISPONIBILIDAD_BITMAP</th>
+                                  <td>
+                                    <strong>
+                                      {resultadoConexion.total_registros_bitmap >= 0
+                                        ? resultadoConexion.total_registros_bitmap.toLocaleString()
+                                        : 'Tabla no encontrada'}
+                                    </strong>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Estado de Objetos PL/SQL en el esquema */}
+                      {resultadoConexion.conectado && Array.isArray(resultadoConexion.objetos_bd) && (
+                        <div>
+                          <h5 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 8 }}>
+                            Estado de Paquetes y Tablas del Directorio en {resultadoConexion.sesion?.usuario_actual}:
+                          </h5>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table className="debug-table">
+                              <thead>
+                                <tr>
+                                  <th>Objeto Oracle</th>
+                                  <th>Tipo</th>
+                                  <th>Estado</th>
+                                  <th>Última Compilación (DDL)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {resultadoConexion.objetos_bd.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                                      No se encontraron los objetos del directorio en este esquema.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  resultadoConexion.objetos_bd.map((obj: any, i: number) => (
+                                    <tr key={i}>
+                                      <td>
+                                        <code>{obj.nombre}</code>
+                                      </td>
+                                      <td>{obj.tipo}</td>
+                                      <td>
+                                        <span
+                                          style={{
+                                            display: 'inline-block',
+                                            padding: '2px 8px',
+                                            borderRadius: 6,
+                                            fontSize: '0.75rem',
+                                            fontWeight: 700,
+                                            background: obj.estado === 'VALID' ? '#dcfce7' : '#fee2e2',
+                                            color: obj.estado === 'VALID' ? '#166534' : '#991b1b'
+                                          }}
+                                        >
+                                          {obj.estado}
+                                        </span>
+                                      </td>
+                                      <td>{obj.ultima_compilacion}</td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

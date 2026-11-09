@@ -14,14 +14,20 @@ export interface OracleConfig {
 }
 
 export function getOracleConfig(): OracleConfig {
-  const user = process.env.ORACLE_DB_USER || 'TEKER_DEV';
-  let password = process.env.ORACLE_DB_PASSWORD || 'T3k3r_2025_D3v_$ecur3';
+  const user = process.env.ORACLE_DB_USER || 'TEKER_PROD';
+  let password = process.env.ORACLE_DB_PASSWORD || 'T3k3r_2025_Pr0d_$ecur3';
 
-  if (password === 'T3k3r_2025_D3v_' || !password.includes('$ecur3')) {
-    password = 'T3k3r_2025_D3v_$ecur3';
-  }
   if (password.includes('\\$')) {
     password = password.replace('\\$', '$');
+  }
+  if (!password.includes('$ecur3')) {
+    if (password.endsWith('_')) {
+      password = `${password}$ecur3`;
+    } else if (user.toUpperCase().includes('PROD')) {
+      password = 'T3k3r_2025_Pr0d_$ecur3';
+    } else {
+      password = 'T3k3r_2025_D3v_$ecur3';
+    }
   }
 
   const connectString = process.env.ORACLE_DB_CONNECTION_STRING || 'tekerapp-db.maxapex.net:1521/orclpdb1';

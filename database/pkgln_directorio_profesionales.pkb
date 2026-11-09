@@ -85,6 +85,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         v_bloqueado_ausencia   BOOLEAN := FALSE;
         v_tipo_horario_aplica VARCHAR2(30) := 'NINGUNO';
         v_duracion_min        NUMBER := 20;
+        v_fecha_actual        DATE := f_fecha_actual;
         v_bitmap              VARCHAR2(288) := RPAD('0', 288, '0');
         v_slots_arr           JSON_ARRAY_T := JSON_ARRAY_T();
         v_slot_obj            JSON_OBJECT_T;
@@ -276,39 +277,44 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             FOR i IN 1..v_turnos_todos.COUNT LOOP
                 IF v_turnos_todos(i).tipo_vigencia = v_tipo_horario_aplica THEN
                     DECLARE
-                        v_min_inicio NUMBER := f_hora_a_minutos(v_turnos_todos(i).hora_desde);
-                        v_min_fin    NUMBER := f_hora_a_minutos(v_turnos_todos(i).hora_hasta);
-                        v_actual     NUMBER := v_min_inicio;
-                        v_slot_fin   NUMBER;
-                        v_idx_inicio NUMBER;
-                        v_idx_fin    NUMBER;
-                        v_ocupado    BOOLEAN;
+                        v_min_inicio      NUMBER := f_hora_a_minutos(v_turnos_todos(i).hora_desde);
+                        v_min_fin         NUMBER := f_hora_a_minutos(v_turnos_todos(i).hora_hasta);
+                        v_actual          NUMBER := v_min_inicio;
+                        v_slot_fin        NUMBER;
+                        v_idx_inicio      NUMBER;
+                        v_idx_fin         NUMBER;
+                        v_ocupado         BOOLEAN;
+                        v_fecha_hora_slot DATE;
                     BEGIN
                         WHILE (v_actual + v_duracion_min) <= v_min_fin LOOP
                             v_slot_fin   := v_actual + v_duracion_min;
                             v_idx_inicio := TRUNC(v_actual / 5) + 1;
                             v_idx_fin    := TRUNC(v_slot_fin / 5);
 
-                            -- Validar si algún bit del slot está ocupado ('1')
-                            v_ocupado := FALSE;
-                            FOR b_idx IN v_idx_inicio..v_idx_fin LOOP
-                                IF b_idx BETWEEN 1 AND 288 THEN
-                                    IF SUBSTR(v_bitmap_ocupado_db, b_idx, 1) = '1' THEN
-                                        v_ocupado := TRUE;
-                                        EXIT;
-                                    END IF;
-                                END IF;
-                            END LOOP;
+                            -- Validar que la fecha y hora del intervalo sea estrictamente mayor a la fecha y hora actual (Bogota)
+                            v_fecha_hora_slot := TRUNC(p_fecha) + (v_actual / 1440);
 
-                            IF NOT v_ocupado THEN
-                                v_slot_obj := JSON_OBJECT_T();
-                                v_slot_obj.put('hora_inicio', f_minutos_a_hora(v_actual));
-                                v_slot_obj.put('hora_fin', f_minutos_a_hora(v_slot_fin));
-                                v_slot_obj.put('duracion_minutos', v_duracion_min);
-                                v_slot_obj.put('id_horario', v_turnos_todos(i).id);
-                                v_slot_obj.put('id_convenio', v_turnos_todos(i).id_convenio);
-                                v_slot_obj.put('disponible', 1);
-                                v_slots_arr.append(v_slot_obj);
+                            IF v_fecha_hora_slot > v_fecha_actual THEN
+                                -- Validar si algun bit del slot esta ocupado ('1')
+                                v_ocupado := FALSE;
+                                FOR b_idx IN v_idx_inicio..v_idx_fin LOOP
+                                    IF b_idx BETWEEN 1 AND 288 THEN
+                                        IF SUBSTR(v_bitmap_ocupado_db, b_idx, 1) = '1' THEN
+                                            v_ocupado := TRUE;
+                                            EXIT;
+                                        END IF;
+                                    END IF;
+                                END LOOP;
+
+                                IF NOT v_ocupado THEN
+                                    v_slot_obj := JSON_OBJECT_T();
+                                    v_slot_obj.put('hora_inicio', f_minutos_a_hora(v_actual));
+                                    v_slot_obj.put('hora_fin', f_minutos_a_hora(v_slot_fin));
+                                    v_slot_obj.put('duracion_minutos', v_duracion_min);
+                                    v_slot_obj.put('id_horario', v_turnos_todos(i).id);
+                                    v_slot_obj.put('id_convenio', v_turnos_todos(i).id_convenio);
+                                    v_slot_obj.put('disponible', 1);
+                                    v_slots_arr.append(v_slot_obj);
 
                                 FOR b_idx IN v_idx_inicio..v_idx_fin LOOP
                                     IF b_idx BETWEEN 1 AND 288 THEN
@@ -316,7 +322,8 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
                                     END IF;
                                 END LOOP;
 
-                                v_total_slots := v_total_slots + 1;
+                                    v_total_slots := v_total_slots + 1;
+                                END IF;
                             END IF;
 
                             v_actual := v_slot_fin;
@@ -344,6 +351,65 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
     END p_calcular_disponibilidad_dia;
 
     -- =========================================================================
+    -- Helper interno para delegar consulta del directorio y filtrar 1 aleatorio cuando p_devolver_uno = 'S'
+    PROCEDURE p_delegar_consulta_directorio (
+        p_json_entrada IN  CLOB,
+        p_json_salida  OUT CLOB
+    ) IS
+        v_obj_in        JSON_OBJECT_T;
+        v_devolver_uno  VARCHAR2(5) := 'N';
+        v_json_consulta CLOB;
+    BEGIN
+        IF p_json_entrada IS NOT NULL AND DBMS_LOB.GETLENGTH(p_json_entrada) > 0 THEN
+            v_obj_in := JSON_OBJECT_T.parse(p_json_entrada);
+            IF v_obj_in.has('p_devolver_uno') THEN
+                v_devolver_uno := UPPER(TRIM(NVL(v_obj_in.get_string('p_devolver_uno'), 'N')));
+            ELSIF v_obj_in.has('devolver_uno') THEN
+                v_devolver_uno := UPPER(TRIM(NVL(v_obj_in.get_string('devolver_uno'), 'N')));
+            END IF;
+        END IF;
+
+        IF v_devolver_uno = 'S' THEN
+            IF v_obj_in IS NULL THEN
+                v_obj_in := JSON_OBJECT_T();
+            END IF;
+            v_obj_in.put('pagina', 1);
+            v_obj_in.put('registros_pagina', 9999);
+            v_json_consulta := v_obj_in.to_clob();
+        ELSE
+            v_json_consulta := p_json_entrada;
+        END IF;
+
+        pkgcn_directorio_profesionales.p_consultar_profesionales_json(
+            p_json_entrada => v_json_consulta,
+            p_json_salida  => p_json_salida
+        );
+
+        IF v_devolver_uno = 'S' AND p_json_salida IS NOT NULL THEN
+            DECLARE
+                v_obj_out    JSON_OBJECT_T;
+                v_arr_profs  JSON_ARRAY_T;
+                v_arr_unico  JSON_ARRAY_T := JSON_ARRAY_T();
+                v_idx_random PLS_INTEGER;
+            BEGIN
+                v_obj_out := JSON_OBJECT_T.parse(p_json_salida);
+                IF v_obj_out.has('profesionales') THEN
+                    v_arr_profs := v_obj_out.get_array('profesionales');
+                    IF v_arr_profs IS NOT NULL AND v_arr_profs.get_size > 0 THEN
+                        v_idx_random := TRUNC(DBMS_RANDOM.VALUE(0, v_arr_profs.get_size));
+                        v_arr_unico.append(v_arr_profs.get(v_idx_random));
+                        v_obj_out.put('profesionales', v_arr_unico);
+                        v_obj_out.put('total_registros', 1);
+                        v_obj_out.put('total_paginas', 1);
+                        v_obj_out.put('pagina_actual', 1);
+                        v_obj_out.put('registros_pagina', 1);
+                        p_json_salida := v_obj_out.to_clob();
+                    END IF;
+                END IF;
+            END;
+        END IF;
+    END p_delegar_consulta_directorio;
+
     -- PROCEDIMIENTOS PÚBLICOS DEL ORQUESTADOR
     -- =========================================================================
 
@@ -434,7 +500,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         END IF;
 
         -- Delegar consulta relacional multi-tabla a pkgcn_
-        pkgcn_directorio_profesionales.p_consultar_profesionales_json(
+        p_delegar_consulta_directorio(
             p_json_entrada => p_json_entrada,
             p_json_salida  => p_json_salida
         );
@@ -561,7 +627,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             v_fecha := TO_DATE(TRIM(v_fecha_str), 'YYYY-MM-DD');
         EXCEPTION
             WHEN OTHERS THEN
-                v_fecha := TRUNC(SYSDATE);
+                v_fecha := TRUNC(f_fecha_actual);
         END;
 
         BEGIN

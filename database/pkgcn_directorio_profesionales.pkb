@@ -114,15 +114,28 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
         v_offset          NUMBER;
         v_total_registros NUMBER := 0;
         v_total_paginas   NUMBER := 0;
+        v_devolver_uno    VARCHAR2(5);
         v_json_arr        CLOB;
     BEGIN
-        v_limite := NVL(TO_NUMBER(JSON_VALUE(p_json_entrada, '$.registros_pagina')), NVL(TO_NUMBER(JSON_VALUE(p_json_entrada, '$.registros_por_pagina')), 12));
-        IF v_limite <= 0 THEN
-            v_limite := 12;
-        END IF;
+        v_devolver_uno := UPPER(TRIM(COALESCE(
+            JSON_VALUE(p_json_entrada, '$.p_devolver_uno'),
+            JSON_VALUE(p_json_entrada, '$.devolver_uno'),
+            'N'
+        )));
 
-        v_pagina := GREATEST(NVL(TO_NUMBER(JSON_VALUE(p_json_entrada, '$.pagina')), 1), 1);
-        v_offset := (v_pagina - 1) * v_limite;
+        IF v_devolver_uno = 'S' THEN
+            v_limite := 1;
+            v_pagina := 1;
+            v_offset := 0;
+        ELSE
+            v_limite := NVL(TO_NUMBER(JSON_VALUE(p_json_entrada, '$.registros_pagina')), NVL(TO_NUMBER(JSON_VALUE(p_json_entrada, '$.registros_por_pagina')), 12));
+            IF v_limite <= 0 THEN
+                v_limite := 12;
+            END IF;
+
+            v_pagina := GREATEST(NVL(TO_NUMBER(JSON_VALUE(p_json_entrada, '$.pagina')), 1), 1);
+            v_offset := (v_pagina - 1) * v_limite;
+        END IF;
 
         -- Conteo total de registros relacional multi-tabla evaluado con JSON_VALUE
         SELECT COUNT(1)
@@ -345,7 +358,9 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                      OR UPPER(u.nombres || ' ' || u.apellidos) LIKE '%' || UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.busqueda'))) || '%'
                      OR UPPER(u.correo_electronico) LIKE '%' || UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.busqueda'))) || '%'
                  )
-               ORDER BY u.nombres ASC, u.apellidos ASC
+                ORDER BY CASE WHEN v_devolver_uno = 'S' THEN DBMS_RANDOM.VALUE ELSE 0 END,
+                         u.nombres ASC,
+                         u.apellidos ASC
               OFFSET v_offset ROWS
                FETCH NEXT v_limite ROWS ONLY
           ) prof;

@@ -13,7 +13,8 @@ Encapsula las consultas multi-tabla con sintaxis relacional tradicional Oracle `
 Consulta el directorio de profesionales de la salud que se encuentran plenamente habilitados para atender en la plataforma, recibiendo el payload `p_json_entrada`, soportando paginación del lado del servidor y evaluando los filtros combinados directamente en el SQL mediante `JSON_VALUE`.
 
 ### 2. Información que Trae (Lectura / Consultas)
-- **Parámetro de Entrada:** `p_json_entrada IN CLOB` (contiene `id_especialidad`, `id_convenio`, `id_tipo_aseguramiento`, `modalidad`, `busqueda`, `pagina`, `registros_pagina`).
+- **Parámetro de Entrada:** `p_json_entrada IN CLOB` (contiene `id_especialidad`, `id_convenio`, `id_tipo_aseguramiento`, `modalidad`, `busqueda`, `pagina`, `registros_pagina`, `p_devolver_uno`).
+- **Modo Aleatorio Único (`p_devolver_uno = 'S'`):** Cuando `p_devolver_uno` viene en `'S'`, ordena aleatoriamente con `DBMS_RANDOM.VALUE` y limita el resultado a 1 profesional con horario activo (`tkr_horarios_profesional.activo = 1`).
 - **Tablas Consultadas:** `tkr_usuarios` (`u`), `tkr_roles_usuario` (`ru`), `tkr_horarios_profesional` (`h`), `tkr_especialidades_usuario` (`ue`), `tkr_especialidades` (`e`), `tkr_franjas_profesional` (`f`).
 - **Filtros Evaluados en SQL con `JSON_VALUE`:**
   - Estado activo (`u.id_estado_usuario = 1`).

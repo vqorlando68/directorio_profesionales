@@ -16,7 +16,7 @@ Gobierna:
 Orquesta la consulta paginada del directorio de profesionales de la salud habilitados en la plataforma, permitiendo aplicar múltiples filtros combinados (especialidad, convenio, aseguramiento, modalidad y búsqueda por texto):
 - Valida los parámetros del payload JSON de entrada y establece valores predeterminados para la paginación (12 médicos por página).
 - Evalúa las reglas de auditoría y telemetría iniciando la traza si se encuentra configurada en el sistema.
-- Delega en el paquete multi-tabla `pkgcn_directorio_profesionales.p_consultar_profesionales_json` la consulta con paginación server-side.
+- Delega en el paquete multi-tabla `pkgcn_directorio_profesionales.p_consultar_profesionales_json` la consulta con paginación server-side (si `p_devolver_uno = 'S'`, retorna únicamente un profesional aleatorio entre aquellos con horario activo).
 - Registra el cierre exitoso de la telemetría y entrega la respuesta estructurada con los metadatos de paginación y el catálogo de profesionales.
 - En caso de excepción inesperada, efectúa reversión, registra el log forense en `tkr_errores` y emite el mensaje descriptivo en el JSON de salida.
 
@@ -51,6 +51,7 @@ Aplica en el orquestador:
 - Jerarquía de vigencias: `POR_DIA` > `PERSONALIZADO` > `BASE`.
 - Consulta y descuento de citas reservadas en `tkr_disponibilidad_bitmap`.
 - Generación de slots en memoria y construcción del vector binario de 288 bits.
+- Filtrado temporal de intervalos: solo se incluyen y muestran intervalos cuya fecha y hora de inicio sea estrictamente mayor a la fecha y hora actual de Bogotá Colombia (_fecha_actual).
 
 ### 2. Decisiones y Bifurcaciones Lógicas
 - **Paso 01 [Validación de Entrada]**: Si el payload es nulo o carece de `id_usuario`; Retorna error estructurado (-20001 / -20002).
