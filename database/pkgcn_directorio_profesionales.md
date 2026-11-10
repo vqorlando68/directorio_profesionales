@@ -13,7 +13,8 @@ Encapsula las consultas multi-tabla con sintaxis relacional tradicional Oracle `
 Consulta el directorio de profesionales de la salud que se encuentran plenamente habilitados para atender en la plataforma, recibiendo el payload `p_json_entrada`, soportando paginación del lado del servidor y evaluando los filtros combinados directamente en el SQL mediante `JSON_VALUE`.
 
 ### 2. Información que Trae (Lectura / Consultas)
-- **Parámetro de Entrada:** `p_json_entrada IN CLOB` (contiene `id_especialidad`, `id_convenio`, `id_tipo_aseguramiento`, `modalidad`, `busqueda`, `pagina`, `registros_pagina`, `p_devolver_uno`).
+- **Parámetro de Entrada:** `p_json_entrada IN CLOB` (contiene `id_especialidad`, `id_convenio`, `id_tipo_aseguramiento`, `modalidad`, `busqueda`, `fecha_a_partir_de` / `fecha_inicio`, `fecha_fin`, `pagina`, `registros_pagina`, `p_devolver_uno`).
+- **Parámetro de Fecha para Horarios (`fecha_a_partir_de` / `fecha_inicio`):** Evalúa los días de atención activos del profesional (`days_of_service`) a partir de la fecha provista en formato `YYYY-MM-DD`. Por defecto, si se omite, se establece en mañana (`TRUNC(f_fecha_actual + 1)`). Cuando se consulta para el día de hoy, evalúa turnos disponibles después de 3 horas de la hora actual de Bogotá (`f_fecha_actual + 3/24`).
 - **Modo Aleatorio Único (`p_devolver_uno = 'S'`):** Cuando `p_devolver_uno` viene en `'S'`, ordena aleatoriamente con `DBMS_RANDOM.VALUE` y limita el resultado a 1 profesional con horario activo (`tkr_horarios_profesional.activo = 1`).
 - **Tablas Consultadas:** `tkr_usuarios` (`u`), `tkr_roles_usuario` (`ru`), `tkr_horarios_profesional` (`h`), `tkr_especialidades_usuario` (`ue`), `tkr_especialidades` (`e`), `tkr_franjas_profesional` (`f`).
 - **Filtros Evaluados en SQL con `JSON_VALUE`:**

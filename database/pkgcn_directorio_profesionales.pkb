@@ -33,7 +33,7 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                 v_f_ini := TRUNC(TO_DATE(SUBSTR(p_fecha_inicio, 1, 10), 'YYYY-MM-DD'));
             END IF;
         ELSE
-            v_f_ini := TRUNC(SYSDATE);
+            v_f_ini := TRUNC(f_fecha_actual + 1); -- Por defecto mañana
         END IF;
 
         IF p_fecha_fin IS NOT NULL THEN
@@ -73,7 +73,7 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                  AND TRUNC(NVL(h.fecha_inicial, v_f_ini)) <= v_f_fin
                  AND TRUNC(NVL(h.fecha_final, v_f_fin)) >= v_f_ini
                  AND (
-                     v_f_fin - v_f_ini >= 6
+                     (v_f_ini > TRUNC(f_fecha_actual) AND v_f_fin - v_f_ini >= 6)
                      OR EXISTS (
                          SELECT 1
                            FROM (
@@ -94,6 +94,13 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                                 END = h.dia_semana
                             AND TRUNC(NVL(h.fecha_inicial, c.cal_dia)) <= c.cal_dia
                             AND TRUNC(NVL(h.fecha_final, c.cal_dia)) >= c.cal_dia
+                            AND (
+                                c.cal_dia > TRUNC(f_fecha_actual)
+                                OR (
+                                    c.cal_dia = TRUNC(f_fecha_actual)
+                                    AND h.hora_hasta >= TO_CHAR(f_fecha_actual + (3 / 24), 'HH24:MI')
+                                )
+                            )
                      )
                  )
           ) d;
@@ -259,7 +266,8 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                            ),
                             'days_of_service'  VALUE f_dias_servicio_profesional(
                                                      prof.id,
-                                                     COALESCE(JSON_VALUE(p_json_entrada, '$.fecha_inicio'),
+                                                     COALESCE(JSON_VALUE(p_json_entrada, '$.fecha_a_partir_de'),
+                                                              JSON_VALUE(p_json_entrada, '$.fecha_inicio'),
                                                               JSON_VALUE(p_json_entrada, '$.fecha_desde'),
                                                               JSON_VALUE(p_json_entrada, '$.fecha_inicial'),
                                                               JSON_VALUE(p_json_entrada, '$.fecha')),
@@ -551,7 +559,8 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                    ),
                     'days_of_service'  VALUE f_dias_servicio_profesional(
                                              u.id,
-                                             COALESCE(JSON_VALUE(p_json_entrada, '$.fecha_inicio'),
+                                             COALESCE(JSON_VALUE(p_json_entrada, '$.fecha_a_partir_de'),
+                                                      JSON_VALUE(p_json_entrada, '$.fecha_inicio'),
                                                       JSON_VALUE(p_json_entrada, '$.fecha_desde'),
                                                       JSON_VALUE(p_json_entrada, '$.fecha_inicial'),
                                                       JSON_VALUE(p_json_entrada, '$.fecha')),

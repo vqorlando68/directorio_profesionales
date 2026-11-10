@@ -139,6 +139,32 @@ function normalizarArreglo<T>(valor: any): T[] {
   return [];
 }
 
+function formatearFechaLocal(fecha: Date): string {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getFechaManana(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return formatearFechaLocal(d);
+}
+
+function getFechaFinDefecto(fIniStr?: string): string {
+  let d: Date;
+  if (fIniStr && fIniStr.includes('-')) {
+    const [y, m, dia] = fIniStr.split('-').map(Number);
+    d = new Date(y, m - 1, dia);
+  } else {
+    d = new Date();
+    d.setDate(d.getDate() + 1);
+  }
+  d.setDate(d.getDate() + 6);
+  return formatearFechaLocal(d);
+}
+
 export default function DirectorioPage() {
   // Estado de catálogos
   const [catalogos, setCatalogos] = useState<FiltrosCatalogo>({
@@ -156,16 +182,9 @@ export default function DirectorioPage() {
   const [modalidad, setModalidad] = useState<string>(''); // '' = Todas
   const [pagina, setPagina] = useState(1);
 
-  // Rango de fechas de consulta
-  const [fechaInicio, setFechaInicio] = useState<string>(() => {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
-  });
-  const [fechaFin, setFechaFin] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 6);
-    return d.toISOString().split('T')[0];
-  });
+  // Rango de fechas de consulta (por defecto mañana)
+  const [fechaInicio, setFechaInicio] = useState<string>(() => getFechaManana());
+  const [fechaFin, setFechaFin] = useState<string>(() => getFechaFinDefecto());
 
   // Datos del directorio
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
@@ -329,6 +348,7 @@ export default function DirectorioPage() {
         id_especialidad: idEspecialidad || null,
         id_convenio: idConvenio || null,
         modalidad: modalidad || null,
+        fecha_a_partir_de: fechaInicio,
         fecha_inicio: fechaInicio,
         fecha_fin: fechaFin
       };
@@ -737,6 +757,7 @@ export default function DirectorioPage() {
           id_convenio: idConvenio || null,
           id_tipo_aseguramiento: idTipoAseguramiento || null,
           modalidad: modalidad || null,
+          fecha_a_partir_de: fechaInicio,
           fecha_inicio: fechaInicio,
           fecha_fin: fechaFin
         },
@@ -791,10 +812,10 @@ export default function DirectorioPage() {
             ejemplo: modalidad ? `'${modalidad}'` : 'NULL'
           },
           {
-            campo: 'fecha_inicio',
+            campo: 'fecha_a_partir_de / fecha_inicio',
             tipo: 'VARCHAR2(10)',
             obligatorio: 'NO',
-            descripcion: 'Fecha inicial del rango en formato YYYY-MM-DD para evaluar días de servicio activos',
+            descripcion: 'Fecha a partir de la cual consultar los horarios/días de servicio activos en formato YYYY-MM-DD. Por defecto: mañana (SYSDATE + 1)',
             ejemplo: `'${fechaInicio}'`
           },
           {
@@ -1335,20 +1356,27 @@ END;
             {/* Rango de Fechas */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Calendar size={16} style={{ color: 'var(--text-muted)' }} />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Rango:</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Horarios a partir de:</span>
               <input
                 type="date"
                 className="form-control"
                 style={{ width: 145 }}
                 value={fechaInicio}
-                onChange={(e) => setFechaInicio(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFechaInicio(val);
+                  if (val && (!fechaFin || fechaFin < val)) {
+                    setFechaFin(getFechaFinDefecto(val));
+                  }
+                }}
               />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>a</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>hasta</span>
               <input
                 type="date"
                 className="form-control"
                 style={{ width: 145 }}
                 value={fechaFin}
+                min={fechaInicio}
                 onChange={(e) => setFechaFin(e.target.value)}
               />
             </div>

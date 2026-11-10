@@ -291,10 +291,13 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
                             v_idx_inicio := TRUNC(v_actual / 5) + 1;
                             v_idx_fin    := TRUNC(v_slot_fin / 5);
 
-                            -- Validar que la fecha y hora del intervalo sea estrictamente mayor a la fecha y hora actual (Bogota)
+                            -- Validar que la fecha y hora del intervalo cumpla las reglas respecto a f_fecha_actual (Bogota):
+                            -- Si es el día de hoy, debe ser después de 3 horas (ej: si son la 1:00 pm, a partir de las 4:00 pm)
+                            -- Si es un día posterior, aplican los intervalos programados
                             v_fecha_hora_slot := TRUNC(p_fecha) + (v_actual / 1440);
 
-                            IF v_fecha_hora_slot > v_fecha_actual THEN
+                            IF (TRUNC(p_fecha) = TRUNC(v_fecha_actual) AND v_fecha_hora_slot >= (v_fecha_actual + (3 / 24)))
+                               OR (TRUNC(p_fecha) > TRUNC(v_fecha_actual)) THEN
                                 -- Validar si algun bit del slot esta ocupado ('1')
                                 v_ocupado := FALSE;
                                 FOR b_idx IN v_idx_inicio..v_idx_fin LOOP
@@ -375,9 +378,31 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             END IF;
             v_obj_in.put('pagina', 1);
             v_obj_in.put('registros_pagina', 9999);
+            IF NOT v_obj_in.has('fecha_a_partir_de') 
+               AND NOT v_obj_in.has('fecha_inicio') 
+               AND NOT v_obj_in.has('fecha_desde') 
+               AND NOT v_obj_in.has('fecha_inicial') 
+               AND NOT v_obj_in.has('fecha') THEN
+                v_obj_in.put('fecha_a_partir_de', TO_CHAR(TRUNC(f_fecha_actual + 1), 'YYYY-MM-DD'));
+                v_obj_in.put('fecha_inicio', TO_CHAR(TRUNC(f_fecha_actual + 1), 'YYYY-MM-DD'));
+            END IF;
             v_json_consulta := v_obj_in.to_clob();
         ELSE
-            v_json_consulta := p_json_entrada;
+            IF v_obj_in IS NOT NULL THEN
+                IF NOT v_obj_in.has('fecha_a_partir_de') 
+                   AND NOT v_obj_in.has('fecha_inicio') 
+                   AND NOT v_obj_in.has('fecha_desde') 
+                   AND NOT v_obj_in.has('fecha_inicial') 
+                   AND NOT v_obj_in.has('fecha') THEN
+                    v_obj_in.put('fecha_a_partir_de', TO_CHAR(TRUNC(f_fecha_actual + 1), 'YYYY-MM-DD'));
+                    v_obj_in.put('fecha_inicio', TO_CHAR(TRUNC(f_fecha_actual + 1), 'YYYY-MM-DD'));
+                    v_json_consulta := v_obj_in.to_clob();
+                ELSE
+                    v_json_consulta := p_json_entrada;
+                END IF;
+            ELSE
+                v_json_consulta := p_json_entrada;
+            END IF;
         END IF;
 
         pkgcn_directorio_profesionales.p_consultar_profesionales_json(
@@ -534,7 +559,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             vro_error.codigo_error        := TO_CHAR(SQLCODE);
             vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
             vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
-            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.fecha               := f_fecha_actual;
             vro_error.usuario             := NVL(TO_CHAR(v_id_usuario_ejecutor), USER);
             vro_error.id_usuario_creacion := v_id_usuario_ejecutor;
 
@@ -805,7 +830,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             vro_error.codigo_error        := TO_CHAR(SQLCODE);
             vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
             vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
-            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.fecha               := f_fecha_actual;
             vro_error.usuario             := NVL(TO_CHAR(v_id_usuario_ejecutor), USER);
             vro_error.id_usuario_creacion := v_id_usuario_ejecutor;
 
@@ -850,7 +875,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             vro_error.codigo_error        := TO_CHAR(SQLCODE);
             vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
             vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
-            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.fecha               := f_fecha_actual;
             vro_error.usuario             := USER;
 
             uti_ge_excepciones_pkg.p_grabar_log(vro_error);
@@ -1373,7 +1398,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             vro_error.codigo_error        := TO_CHAR(SQLCODE);
             vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
             vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
-            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.fecha               := f_fecha_actual;
             vro_error.usuario             := NVL(TO_CHAR(v_id_usuario_ejecutor), USER);
             vro_error.id_usuario_creacion := v_id_usuario_ejecutor;
 
@@ -1549,7 +1574,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             vro_error.codigo_error        := TO_CHAR(SQLCODE);
             vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
             vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
-            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.fecha               := f_fecha_actual;
             vro_error.usuario             := USER;
             vro_error.id_usuario_creacion := NULL;
 
@@ -1659,7 +1684,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             vro_error.codigo_error        := TO_CHAR(SQLCODE);
             vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
             vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
-            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.fecha               := f_fecha_actual;
             vro_error.usuario             := NVL(TO_CHAR(v_id_usuario_ejecutor), USER);
             vro_error.id_usuario_creacion := v_id_usuario_ejecutor;
 
@@ -1805,7 +1830,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
                 v_fecha_inicio := TRUNC(TO_DATE(SUBSTR(v_fecha_ini_str, 1, 10), 'YYYY-MM-DD'));
             END IF;
         ELSE
-            v_fecha_inicio := TRUNC(SYSDATE);
+            v_fecha_inicio := TRUNC(f_fecha_actual);
         END IF;
 
         IF v_fecha_fin_str IS NOT NULL THEN
@@ -2001,7 +2026,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             vro_error.codigo_error        := TO_CHAR(SQLCODE);
             vro_error.texto_error         := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
             vro_error.mensaje_error       := SUBSTR(SQLERRM, 1, 4000);
-            vro_error.fecha               := CAST(SYSTIMESTAMP AT TIME ZONE 'America/Bogota' AS DATE);
+            vro_error.fecha               := f_fecha_actual;
             vro_error.usuario             := NVL(TO_CHAR(v_id_usuario_ejecutor), USER);
             vro_error.id_usuario_creacion := v_id_usuario_ejecutor;
 

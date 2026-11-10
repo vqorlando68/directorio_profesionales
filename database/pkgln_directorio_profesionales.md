@@ -14,7 +14,7 @@ Gobierna:
 
 ### 1. Descripción en Lenguaje Natural
 Orquesta la consulta paginada del directorio de profesionales de la salud habilitados en la plataforma, permitiendo aplicar múltiples filtros combinados (especialidad, convenio, aseguramiento, modalidad y búsqueda por texto):
-- Valida los parámetros del payload JSON de entrada y establece valores predeterminados para la paginación (12 médicos por página).
+- Valida los parámetros del payload JSON de entrada y establece valores predeterminados para la paginación (12 médicos por página) y fecha inicial de consulta de horarios (`fecha_a_partir_de` / `fecha_inicio`, por defecto mañana: `TRUNC(f_fecha_actual + 1)`). Si se consulta el día de hoy, los horarios y slots se calculan a partir de 3 horas después de la hora actual de Bogotá (`f_fecha_actual + 3/24`).
 - Evalúa las reglas de auditoría y telemetría iniciando la traza si se encuentra configurada en el sistema.
 - Delega en el paquete multi-tabla `pkgcn_directorio_profesionales.p_consultar_profesionales_json` la consulta con paginación server-side (si `p_devolver_uno = 'S'`, retorna únicamente un profesional aleatorio entre aquellos con horario activo).
 - Registra el cierre exitoso de la telemetría y entrega la respuesta estructurada con los metadatos de paginación y el catálogo de profesionales.
