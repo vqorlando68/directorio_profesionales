@@ -202,6 +202,10 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                JSON_VALUE(p_json_entrada, '$.busqueda') IS NULL
                OR UPPER(u.nombres || ' ' || u.apellidos) LIKE '%' || UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.busqueda'))) || '%'
                OR UPPER(u.correo_electronico) LIKE '%' || UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.busqueda'))) || '%'
+           )
+           AND (
+               JSON_VALUE(p_json_entrada, '$.id_profesionales_excluir') IS NULL
+               OR INSTR(',' || REPLACE(JSON_VALUE(p_json_entrada, '$.id_profesionales_excluir'), ' ', '') || ',', ',' || TO_CHAR(u.id) || ',') = 0
            );
 
         v_total_paginas := CEIL(v_total_registros / v_limite);
@@ -365,6 +369,10 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
                      JSON_VALUE(p_json_entrada, '$.busqueda') IS NULL
                      OR UPPER(u.nombres || ' ' || u.apellidos) LIKE '%' || UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.busqueda'))) || '%'
                      OR UPPER(u.correo_electronico) LIKE '%' || UPPER(TRIM(JSON_VALUE(p_json_entrada, '$.busqueda'))) || '%'
+                 )
+                 AND (
+                     JSON_VALUE(p_json_entrada, '$.id_profesionales_excluir') IS NULL
+                     OR INSTR(',' || REPLACE(JSON_VALUE(p_json_entrada, '$.id_profesionales_excluir'), ' ', '') || ',', ',' || TO_CHAR(u.id) || ',') = 0
                  )
                 ORDER BY CASE WHEN v_devolver_uno = 'S' THEN DBMS_RANDOM.VALUE ELSE 0 END,
                          u.nombres ASC,

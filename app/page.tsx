@@ -180,6 +180,7 @@ export default function DirectorioPage() {
   const [idConvenio, setIdConvenio] = useState<number | ''>('');
   const [idTipoAseguramiento, setIdTipoAseguramiento] = useState<number>(1); // 1 = Voluntario por defecto
   const [modalidad, setModalidad] = useState<string>(''); // '' = Todas
+  const [idProfesionalesExcluir, setIdProfesionalesExcluir] = useState<string>('');
   const [pagina, setPagina] = useState(1);
 
   // Rango de fechas de consulta (por defecto mañana)
@@ -350,7 +351,8 @@ export default function DirectorioPage() {
         modalidad: modalidad || null,
         fecha_a_partir_de: fechaInicio,
         fecha_inicio: fechaInicio,
-        fecha_fin: fechaFin
+        fecha_fin: fechaFin,
+        id_profesionales_excluir: idProfesionalesExcluir.trim() || null
       };
 
       const res = await fetch('/api/directorio', {
@@ -374,7 +376,7 @@ export default function DirectorioPage() {
     } finally {
       setCargando(false);
     }
-  }, [pagina, busqueda, idEspecialidad, idConvenio, idTipoAseguramiento, modalidad, fechaInicio, fechaFin]);
+  }, [pagina, busqueda, idEspecialidad, idConvenio, idTipoAseguramiento, modalidad, fechaInicio, fechaFin, idProfesionalesExcluir]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -759,7 +761,8 @@ export default function DirectorioPage() {
           modalidad: modalidad || null,
           fecha_a_partir_de: fechaInicio,
           fecha_inicio: fechaInicio,
-          fecha_fin: fechaFin
+          fecha_fin: fechaFin,
+          id_profesionales_excluir: idProfesionalesExcluir.trim() || null
         },
         parametrosDoc: [
           {
@@ -824,6 +827,13 @@ export default function DirectorioPage() {
             obligatorio: 'NO',
             descripcion: 'Fecha final del rango en formato YYYY-MM-DD para evaluar días de servicio activos',
             ejemplo: `'${fechaFin}'`
+          },
+          {
+            campo: 'id_profesionales_excluir',
+            tipo: 'VARCHAR2(4000)',
+            obligatorio: 'NO',
+            descripcion: 'Cadena con IDs de profesionales a excluir separados por coma (ej: 101,102,105)',
+            ejemplo: idProfesionalesExcluir ? `'${idProfesionalesExcluir}'` : 'NULL'
           },
           {
             campo: 'p_devolver_uno',
@@ -1484,6 +1494,21 @@ END;
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Excluir Profesionales por ID */}
+            <div className="form-group">
+              <label className="form-label">Excluir IDs (separados por coma)</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="ej: 101, 102, 105"
+                value={idProfesionalesExcluir}
+                onChange={(e) => {
+                  setIdProfesionalesExcluir(e.target.value);
+                  setPagina(1);
+                }}
+              />
             </div>
           </div>
         </section>

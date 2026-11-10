@@ -452,8 +452,9 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         v_id_convenio           NUMBER(12);
         v_id_tipo_aseguramiento NUMBER(12);
         v_modalidad             VARCHAR2(10);
-        v_busqueda              VARCHAR2(200);
-        v_pagina                NUMBER := 1;
+        v_busqueda                  VARCHAR2(200);
+        v_id_profesionales_excluir  VARCHAR2(4000);
+        v_pagina                    NUMBER := 1;
         v_registros_pagina      NUMBER := 12;
 
         v_traza_activa          BOOLEAN := FALSE;
@@ -486,6 +487,9 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             END IF;
             IF v_obj_in.has('busqueda') THEN
                 v_busqueda := v_obj_in.get_string('busqueda');
+            END IF;
+            IF v_obj_in.has('id_profesionales_excluir') THEN
+                v_id_profesionales_excluir := v_obj_in.get_string('id_profesionales_excluir');
             END IF;
             IF v_obj_in.has('pagina') THEN
                 v_pagina := NVL(v_obj_in.get_number('pagina'), 1);
@@ -1727,6 +1731,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
         v_id_tipo_aseguramiento     NUMBER(12);
         v_modalidad                 VARCHAR2(2);
         v_id_especialidad_fil       NUMBER(12);
+        v_id_profesionales_excluir  VARCHAR2(4000);
 
         v_id_usuario_ejecutor       NUMBER(12) := 1;
         v_codigo_traza              VARCHAR2(100);
@@ -1754,6 +1759,10 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
               FROM tkr_usuarios u
              WHERE u.estado = 'A'
                AND NVL(u.ocultar_directorio, 'N') = 'N'
+               AND (
+                   v_id_profesionales_excluir IS NULL
+                   OR INSTR(',' || REPLACE(v_id_profesionales_excluir, ' ', '') || ',', ',' || TO_CHAR(u.id) || ',') = 0
+               )
              ORDER BY u.nombres, u.apellidos;
 
         -- Cursor de especialidades asignadas al médico
@@ -1816,6 +1825,9 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             END IF;
             IF v_obj_in.has('id_especialidad') THEN
                 v_id_especialidad_fil := v_obj_in.get_number('id_especialidad');
+            END IF;
+            IF v_obj_in.has('id_profesionales_excluir') THEN
+                v_id_profesionales_excluir := v_obj_in.get_string('id_profesionales_excluir');
             END IF;
         END IF;
 
