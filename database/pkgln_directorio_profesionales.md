@@ -17,7 +17,7 @@ Orquesta la consulta paginada del directorio de profesionales de la salud habili
 - Valida los parámetros del payload JSON de entrada y establece valores predeterminados para la paginación (12 médicos por página) y fecha inicial de consulta de horarios (`fecha_a_partir_de` / `fecha_inicio`, por defecto mañana: `TRUNC(f_fecha_actual + 1)`). Si se consulta el día de hoy, los horarios y slots se calculan a partir de 3 horas después de la hora actual de Bogotá (`f_fecha_actual + 3/24`).
 - Admite el parámetro `id_profesionales_excluir` (cadena de IDs separados por coma) para omitir profesionales específicos del directorio.
 - Evalúa las reglas de auditoría y telemetría iniciando la traza si se encuentra configurada en el sistema.
-- Delega en el paquete multi-tabla `pkgcn_directorio_profesionales.p_consultar_profesionales_json` la consulta con paginación server-side (si `p_devolver_uno = 'S'`, retorna únicamente un profesional aleatorio entre aquellos con horario activo).
+- Delega en el paquete multi-tabla `pkgcn_directorio_profesionales.p_consultar_profesionales_json` la consulta con paginación server-side. Si `p_devolver_uno = 'S'`, calcula la fecha más próxima con disponibilidad activa (slots > 0) para cada candidato mediante `f_fecha_mas_proxima_profesional`, filtra el subconjunto de profesionales que tienen disponibilidad en dicho día mínimo y selecciona uno aleatoriamente entre ellos.
 - Registra el cierre exitoso de la telemetría y entrega la respuesta estructurada con los metadatos de paginación y el catálogo de profesionales.
 - En caso de excepción inesperada, efectúa reversión, registra el log forense en `tkr_errores` y emite el mensaje descriptivo en el JSON de salida.
 

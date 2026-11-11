@@ -131,7 +131,7 @@ CREATE OR REPLACE PACKAGE BODY pkgcn_directorio_profesionales AS
         )));
 
         IF v_devolver_uno = 'S' THEN
-            v_limite := 1;
+            v_limite := NVL(TO_NUMBER(JSON_VALUE(p_json_entrada, '$.registros_pagina')), 1);
             v_pagina := 1;
             v_offset := 0;
         ELSE

@@ -354,7 +354,93 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
     END p_calcular_disponibilidad_dia;
 
     -- =========================================================================
-    -- Helper interno para delegar consulta del directorio y filtrar 1 aleatorio cuando p_devolver_uno = 'S'
+    -- Helper para encontrar la fecha más próxima con disponibilidad activa (slots > 0)
+    FUNCTION f_fecha_mas_proxima_profesional (
+        p_id_usuario            IN NUMBER,
+        p_fecha_inicio          IN DATE,
+        p_id_convenio           IN NUMBER   DEFAULT NULL,
+        p_id_tipo_aseguramiento IN NUMBER   DEFAULT NULL,
+        p_modalidad             IN VARCHAR2 DEFAULT 'V'
+    ) RETURN DATE IS
+        CURSOR c_dias_candidatos IS
+            SELECT c.cal_dia
+              FROM (
+                  SELECT TRUNC(p_fecha_inicio) + LEVEL - 1 AS cal_dia
+                    FROM DUAL
+                 CONNECT BY LEVEL <= 60
+              ) c,
+              tkr_horarios_profesional h,
+              tkr_usuarios u
+             WHERE u.id = p_id_usuario
+               AND h.id_usuario = u.id
+               AND h.activo = 1
+               AND (p_id_convenio IS NULL OR h.id_convenio = p_id_convenio OR h.id_convenio IS NULL)
+               AND (p_id_tipo_aseguramiento IS NULL OR h.id_tipo_aseguramiento = p_id_tipo_aseguramiento OR h.id_tipo_aseguramiento IS NULL)
+               AND CASE UPPER(SUBSTR(TRIM(TO_CHAR(c.cal_dia, 'DY', 'NLS_DATE_LANGUAGE=SPANISH')), 1, 2))
+                       WHEN 'LU' THEN 'LU'
+                       WHEN 'MA' THEN 'MA'
+                       WHEN 'MI' THEN 'MI'
+                       WHEN 'JU' THEN 'JU'
+                       WHEN 'VI' THEN 'VI'
+                       WHEN 'SÁ' THEN 'SA'
+                       WHEN 'SA' THEN 'SA'
+                       WHEN 'DO' THEN 'DO'
+                       ELSE 'LU'
+                   END = h.dia_semana
+               AND TRUNC(NVL(h.fecha_inicial, c.cal_dia)) <= c.cal_dia
+               AND TRUNC(NVL(h.fecha_final, c.cal_dia)) >= c.cal_dia
+               AND (
+                   c.cal_dia > TRUNC(f_fecha_actual)
+                   OR (
+                       c.cal_dia = TRUNC(f_fecha_actual)
+                       AND h.hora_hasta >= TO_CHAR(f_fecha_actual + (3 / 24), 'HH24:MI')
+                   )
+               )
+             GROUP BY c.cal_dia
+             ORDER BY c.cal_dia ASC;
+
+        v_json_dia   CLOB;
+        v_obj_dia    JSON_OBJECT_T;
+        v_slots_arr  JSON_ARRAY_T;
+        v_total_s    NUMBER;
+    BEGIN
+        FOR r_dia IN c_dias_candidatos LOOP
+            p_calcular_disponibilidad_dia(
+                p_id_usuario            => p_id_usuario,
+                p_fecha                 => r_dia.cal_dia,
+                p_id_convenio           => p_id_convenio,
+                p_id_tipo_aseguramiento => p_id_tipo_aseguramiento,
+                p_modalidad             => p_modalidad,
+                p_json_salida           => v_json_dia
+            );
+
+            IF v_json_dia IS NOT NULL THEN
+                BEGIN
+                    v_obj_dia := JSON_OBJECT_T.parse(v_json_dia);
+                    IF v_obj_dia.has('slots') THEN
+                        v_slots_arr := v_obj_dia.get_array('slots');
+                        IF v_slots_arr IS NOT NULL AND v_slots_arr.get_size > 0 THEN
+                            v_total_s := NVL(v_obj_dia.get_number('total_slots'), v_slots_arr.get_size);
+                            IF v_total_s > 0 THEN
+                                RETURN r_dia.cal_dia;
+                            END IF;
+                        END IF;
+                    END IF;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        NULL;
+                END;
+            END IF;
+        END LOOP;
+
+        RETURN NULL;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END f_fecha_mas_proxima_profesional;
+
+    -- =========================================================================
+    -- Helper interno para delegar consulta del directorio y filtrar 1 aleatorio para el día más próximo
     PROCEDURE p_delegar_consulta_directorio (
         p_json_entrada IN  CLOB,
         p_json_salida  OUT CLOB
@@ -378,6 +464,8 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
             END IF;
             v_obj_in.put('pagina', 1);
             v_obj_in.put('registros_pagina', 9999);
+            v_obj_in.put('p_devolver_uno', 'N');
+            v_obj_in.put('devolver_uno', 'N');
             IF NOT v_obj_in.has('fecha_a_partir_de') 
                AND NOT v_obj_in.has('fecha_inicio') 
                AND NOT v_obj_in.has('fecha_desde') 
@@ -412,17 +500,112 @@ CREATE OR REPLACE PACKAGE BODY pkgln_directorio_profesionales AS
 
         IF v_devolver_uno = 'S' AND p_json_salida IS NOT NULL THEN
             DECLARE
-                v_obj_out    JSON_OBJECT_T;
-                v_arr_profs  JSON_ARRAY_T;
-                v_arr_unico  JSON_ARRAY_T := JSON_ARRAY_T();
-                v_idx_random PLS_INTEGER;
+                v_obj_out              JSON_OBJECT_T;
+                v_arr_profs            JSON_ARRAY_T;
+                v_arr_unico            JSON_ARRAY_T := JSON_ARRAY_T();
+                v_fecha_ini_eval       DATE;
+                v_fecha_str            VARCHAR2(30);
+                v_id_convenio_in       NUMBER(12);
+                v_id_aseg_in           NUMBER(12);
+                v_modalidad_in         VARCHAR2(10) := 'V';
+
+                TYPE t_prof_candidato IS RECORD (
+                    prof_obj      JSON_OBJECT_T,
+                    fecha_proxima DATE
+                );
+                TYPE t_tab_candidatos IS TABLE OF t_prof_candidato INDEX BY PLS_INTEGER;
+                v_candidatos          t_tab_candidatos;
+                v_min_fecha           DATE := NULL;
+
+                TYPE t_tab_elegidos IS TABLE OF JSON_OBJECT_T INDEX BY PLS_INTEGER;
+                v_elegidos            t_tab_elegidos;
+                v_idx_random          PLS_INTEGER;
+                v_total_candidatos    PLS_INTEGER := 0;
+                v_total_elegidos      PLS_INTEGER := 0;
+                v_prof_temp           JSON_OBJECT_T;
+                v_id_prof_temp        NUMBER(12);
+                v_f_prox              DATE;
             BEGIN
+                IF v_obj_in IS NOT NULL THEN
+                    IF v_obj_in.has('fecha_a_partir_de') THEN
+                        v_fecha_str := v_obj_in.get_string('fecha_a_partir_de');
+                    ELSIF v_obj_in.has('fecha_inicio') THEN
+                        v_fecha_str := v_obj_in.get_string('fecha_inicio');
+                    ELSIF v_obj_in.has('fecha_desde') THEN
+                        v_fecha_str := v_obj_in.get_string('fecha_desde');
+                    ELSIF v_obj_in.has('fecha') THEN
+                        v_fecha_str := v_obj_in.get_string('fecha');
+                    END IF;
+
+                    IF v_obj_in.has('id_convenio') THEN
+                        v_id_convenio_in := v_obj_in.get_number('id_convenio');
+                    END IF;
+                    IF v_obj_in.has('id_tipo_aseguramiento') THEN
+                        v_id_aseg_in := v_obj_in.get_number('id_tipo_aseguramiento');
+                    END IF;
+                    IF v_obj_in.has('modalidad') THEN
+                        v_modalidad_in := NVL(v_obj_in.get_string('modalidad'), 'V');
+                    END IF;
+                END IF;
+
+                IF v_fecha_str IS NOT NULL THEN
+                    IF INSTR(v_fecha_str, '/') > 0 THEN
+                        v_fecha_ini_eval := TRUNC(TO_DATE(SUBSTR(v_fecha_str, 1, 10), 'DD/MM/YYYY'));
+                    ELSE
+                        v_fecha_ini_eval := TRUNC(TO_DATE(SUBSTR(v_fecha_str, 1, 10), 'YYYY-MM-DD'));
+                    END IF;
+                ELSE
+                    v_fecha_ini_eval := TRUNC(f_fecha_actual + 1);
+                END IF;
+
                 v_obj_out := JSON_OBJECT_T.parse(p_json_salida);
                 IF v_obj_out.has('profesionales') THEN
                     v_arr_profs := v_obj_out.get_array('profesionales');
                     IF v_arr_profs IS NOT NULL AND v_arr_profs.get_size > 0 THEN
-                        v_idx_random := TRUNC(DBMS_RANDOM.VALUE(0, v_arr_profs.get_size));
-                        v_arr_unico.append(v_arr_profs.get(v_idx_random));
+                        -- 1. Calcular la fecha más próxima con disponibilidad activa para cada profesional
+                        FOR i IN 0 .. v_arr_profs.get_size - 1 LOOP
+                            v_prof_temp := TREAT(v_arr_profs.get(i) AS JSON_OBJECT_T);
+                            v_id_prof_temp := NVL(v_prof_temp.get_number('id'), v_prof_temp.get_number('id_usuario'));
+
+                            v_f_prox := f_fecha_mas_proxima_profesional(
+                                p_id_usuario            => v_id_prof_temp,
+                                p_fecha_inicio          => v_fecha_ini_eval,
+                                p_id_convenio           => v_id_convenio_in,
+                                p_id_tipo_aseguramiento => v_id_aseg_in,
+                                p_modalidad             => v_modalidad_in
+                            );
+
+                            v_total_candidatos := v_total_candidatos + 1;
+                            v_candidatos(v_total_candidatos).prof_obj := v_prof_temp;
+                            v_candidatos(v_total_candidatos).fecha_proxima := v_f_prox;
+
+                            IF v_f_prox IS NOT NULL THEN
+                                IF v_min_fecha IS NULL OR v_f_prox < v_min_fecha THEN
+                                    v_min_fecha := v_f_prox;
+                                END IF;
+                            END IF;
+                        END LOOP;
+
+                        -- 2. Filtrar únicamente los profesionales que tienen disponibilidad en el día más próximo
+                        IF v_min_fecha IS NOT NULL THEN
+                            FOR i IN 1 .. v_total_candidatos LOOP
+                                IF v_candidatos(i).fecha_proxima = v_min_fecha THEN
+                                    v_total_elegidos := v_total_elegidos + 1;
+                                    v_candidatos(i).prof_obj.put('fecha_mas_proxima', TO_CHAR(v_min_fecha, 'YYYY-MM-DD'));
+                                    v_elegidos(v_total_elegidos) := v_candidatos(i).prof_obj;
+                                END IF;
+                            END LOOP;
+                        END IF;
+
+                        -- 3. Elegir aleatoriamente entre los profesionales del día más próximo
+                        IF v_total_elegidos > 0 THEN
+                            v_idx_random := TRUNC(DBMS_RANDOM.VALUE(1, v_total_elegidos + 1));
+                            v_arr_unico.append(v_elegidos(v_idx_random));
+                        ELSE
+                            v_idx_random := TRUNC(DBMS_RANDOM.VALUE(0, v_arr_profs.get_size));
+                            v_arr_unico.append(v_arr_profs.get(v_idx_random));
+                        END IF;
+
                         v_obj_out.put('profesionales', v_arr_unico);
                         v_obj_out.put('total_registros', 1);
                         v_obj_out.put('total_paginas', 1);
